@@ -65,10 +65,20 @@ class Field(object):
         raise NotImplementedError("Subclasses must implement")
 
 
-class SignedIntegerField(Field):
+class UnsignedIntegerField(Field):
 
-    STANDARD_WIDTHS = {1: "b", 2: "h", 4: "i", 8: "d"}
+    STANDARD_WIDTHS = {1: "B", 2: "H", 4: "I", 8: "Q"}
     ENDIAN = {BIG: ">", LITTLE: "<"}
+
+    @classmethod
+    def bounds_validator(cls, width):
+        """
+        Create a bounds validator for UnsignedInteger, for a specific width.
+
+        :param width: The integer's width, in bytes.
+        :return: A RangeValidator according to this class.
+        """
+        return RangeValidator(min_val=0, max_val=2 ** (width * 8))
 
     def __init__(self, initial_value=0,
                  width=4, min_value=None,
@@ -76,45 +86,49 @@ class SignedIntegerField(Field):
         if width < 1:
             raise ValueError("Invalid width: %s. Must be at least 1" % (width,))
 
-        super(SignedIntegerField, self).__init__(initial_value, **kwargs)
-        self.validators.append(RangeValidator(min_value, max_value))
+        super(UnsignedIntegerField, self).__init__(initial_value, **kwargs)
         self.width = width
-        width_symbol = self.STANDARD_WIDTHS.get(width)
 
-        # Fallback encoding. Can be optimized with width is standard integer.
+        # Add class-wise bounds validator
+        self.validators.append(self.bounds_validator(self.width))
+        # Add user bounds validator
+        self.validators.append(RangeValidator(min_value, max_value))
+
+        # Fallback encoding. Can be optimized if width is standard integer.
         self._encode_func = self._encode_using_binascii
-
-        self.format = ("%s%s" % (self.ENDIAN[self.byte_order], width_symbol)
-                       if width_symbol else None)
-        if self.format is not None:
-            # Width is standard. Better encoding available.
-            self._encode_func = self._encode_using_struct
 
         # Fallback decoding. Can be optimized if on Python 3.2 and above, or if
         # width is standard integer width.
         self._decode_func = self._decode_manually
 
+        self.struct = None
+
+        width_symbol = self.STANDARD_WIDTHS.get(self.width)
+        if width_symbol is not None:
+            # Width is standard. use struct for encoding.
+            self.struct = struct.Struct(
+                "%s%s" % (self.ENDIAN[self.byte_order], width_symbol))
+            self._encode_func = self._encode_using_struct
+            self._decode_func = self._decode_using_struct
+
         from_bytes = getattr(int, "from_bytes", None)
         if from_bytes is not None:
             # Python 3.2 and above. Best option. Best performance
-            self._decode_func = functools.partial(
-                from_bytes, byteorder=self.byte_order, signed=True)
-        elif self.format is not None:
-            # Utilize the struct module.
-            self._decode_func = self._decode_using_struct
+            self._decode_func = self._decode_using_int
 
     def _encode(self):
         # Not setting _encode = _encode_func so that subclasses could override.
         return self._encode_func()
 
     def _encode_using_struct(self):
-        return struct.pack(self.format, self.value)
+        return self.struct.pack(self.value)
 
     def _encode_using_binascii(self):
         as_hex = hex(self.value)[2:]
         length = len(as_hex)
         even_length = as_hex.rjust(length + length % 2, "0")
         encoded = binascii.unhexlify(even_length)
+        encoded = encoded.rjust(self.width, "\x00")
         if self.byte_order == LITTLE:
             encoded = encoded[::-1]
         return encoded
@@ -128,8 +142,12 @@ class SignedIntegerField(Field):
         self.value = self._decode_func(mine)
         return rest
 
+    def _decode_using_int(self, as_bytes):
+        # noinspection PyUnresolvedReferences
+        return int.from_bytes(as_bytes, byteorder=self.byte_order, signed=False)
+
     def _decode_using_struct(self, as_bytes):
-        return struct.unpack(self.format, as_bytes)[0]
+        return self.struct.unpack(as_bytes)[0]
 
     def _decode_manually(self, as_bytes):
         if self.byte_order == LITTLE:
@@ -141,7 +159,26 @@ class SignedIntegerField(Field):
         return decoded_value
 
 
-class BooleanField(SignedIntegerField):
+class SignedIntegerField(UnsignedIntegerField):
+
+    STANDARD_WIDTHS = {1: "b", 2: "h", 4: "i", 8: "q"}
+    ENDIAN = {BIG: ">", LITTLE: "<"}
+
+    @classmethod
+    def bounds_validator(cls, width):
+        """
+        Create a bounds validator for SignedInteger, with a specific width.
+
+        :param width: The integer's width, in bytes.
+        :return: A RangeValidator according to this class.
+        """
+        value_bits = 8 * width - 1  # -1 for the sign bit
+        return RangeValidator(
+            min_val=(-2 ** value_bits),
+            max_val=2 ** value_bits - 1)
+
+
+class BooleanField(UnsignedIntegerField):
 
     def __init__(self, initial_value=False):
         # BooleanField is a 1-byte integer

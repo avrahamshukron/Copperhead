@@ -1,3 +1,8 @@
+import binascii
+import functools
+
+import struct
+
 from validators import RangeValidator
 
 LITTLE = "little"
@@ -62,33 +67,71 @@ class Field(object):
 
 class SignedIntegerField(Field):
 
-    def __init__(self, initial_value=0, width=4, min_value=None,
-                 max_value=None):
-        super(SignedIntegerField, self).__init__(initial_value)
+    STANDARD_WIDTHS = {1: "b", 2: "h", 4: "i", 8: "d"}
+    ENDIAN = {BIG: ">", LITTLE: "<"}
+
+    def __init__(self, initial_value=0,
+                 width=4, min_value=None,
+                 max_value=None, **kwargs):
+        if width < 1:
+            raise ValueError("Invalid width: %s. Must be at least 1" % (width,))
+
+        super(SignedIntegerField, self).__init__(initial_value, **kwargs)
         self.validators.append(RangeValidator(min_value, max_value))
         self.width = width
+        width_symbol = self.STANDARD_WIDTHS.get(width)
 
-    def _encode(self):
-        pass
+        # Fallback encoding. Can be optimized with width is standard integer.
+        self._encode_func = self._encode_using_binascii
 
-    def _decode(self, byte_buf):
-        mine = byte_buf[:self.width]
-        rest = byte_buf[self.width:]
-        self.value = self._decode(mine)
-        return rest
+        self.format = ("%s%s" % (self.ENDIAN[self.byte_order], width_symbol)
+                       if width_symbol else None)
+        if self.format is not None:
+            # Width is standard. Better encoding available.
+            self._encode_func = self._encode_using_struct
 
-    def _decode_int(self, as_bytes):
+        # Fallback decoding. Can be optimized if on Python 3.2 and above, or if
+        # width is standard integer width.
+        self._decode_func = self._decode_manually
+
         from_bytes = getattr(int, "from_bytes", None)
         if from_bytes is not None:
-            # Python > 3.2
-            decoded_value = from_bytes(
-                as_bytes, byteorder=self.byte_order, signed=True)
-        else:
-            # Backward compatibility
-            decoded_value = self._decode_int_python2(as_bytes)
-        return decoded_value
+            # Python 3.2 and above. Best option. Best performance
+            self._decode_func = functools.partial(
+                from_bytes, byteorder=self.byte_order, signed=True)
+        elif self.format is not None:
+            # Utilize the struct module.
+            self._decode_func = self._decode_using_struct
 
-    def _decode_int_python2(self, as_bytes):
+    def _encode(self):
+        # Not setting _encode = _encode_func so that subclasses could override.
+        return self._encode_func()
+
+    def _encode_using_struct(self):
+        return struct.pack(self.format, self.value)
+
+    def _encode_using_binascii(self):
+        as_hex = hex(self.value)[2:]
+        length = len(as_hex)
+        even_length = as_hex.rjust(length + length % 2, "0")
+        encoded = binascii.unhexlify(even_length)
+        if self.byte_order == LITTLE:
+            encoded = encoded[::-1]
+        return encoded
+
+    def _decode(self, byte_buf):
+        if len(byte_buf) < self.width:
+            raise ValueError("Cannot decode - not enough data supplied")
+
+        mine = byte_buf[:self.width]
+        rest = byte_buf[self.width:]
+        self.value = self._decode_func(mine)
+        return rest
+
+    def _decode_using_struct(self, as_bytes):
+        return struct.unpack(self.format, as_bytes)[0]
+
+    def _decode_manually(self, as_bytes):
         if self.byte_order == LITTLE:
             # Reverse the byte order
             as_bytes = as_bytes[::-1]
@@ -103,11 +146,8 @@ class BooleanField(SignedIntegerField):
     def __init__(self, initial_value=False):
         # BooleanField is a 1-byte integer
         super(BooleanField, self).__init__(initial_value, width=1)
+        self._decode_func = lambda s: False if s == "\x00" else True
 
-    def encode(self):
+    def _encode(self):
         # Optimized since we only have two possible values
         return "\x01" if self.value else "\x00"
-
-    def decode(self, byte_buf):
-        self.value = self._decode(byte_buf[0])
-        return byte_buf[1:]

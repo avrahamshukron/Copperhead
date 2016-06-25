@@ -1,6 +1,6 @@
 from unittest import TestCase
 
-from fields import BooleanField, UnsignedIntegerField
+from fields import BooleanField, UnsignedIntegerField, SignedIntegerField
 
 
 class UnsignedIntegerFieldTests(TestCase):
@@ -9,10 +9,10 @@ class UnsignedIntegerFieldTests(TestCase):
         """
         Test correct creation of an instance.
         """
-        for width in (-1, 0):
+        for width in (-1, 0, 3, 5, 6, 7, 9, 10):
             self.failUnlessRaises(ValueError, UnsignedIntegerField, width=width)
 
-        for width in range(1, 10):
+        for width in UnsignedIntegerField.STANDARD_WIDTHS.keys():
             initial_value = 124
             f = UnsignedIntegerField(width=width, initial_value=initial_value)
             self.failUnlessEqual(f.width, width)
@@ -20,13 +20,7 @@ class UnsignedIntegerFieldTests(TestCase):
                 f.value, initial_value, msg="Wrong value observed")
 
     def test_class_bounds(self):
-        """
-        Test upper and lower bounds of this class.
-
-        Verify that encoding fails when trying to encode a value outside the
-        class's bounds.
-        """
-        for width in range(1, 10):
+        for width in UnsignedIntegerField.STANDARD_WIDTHS.keys():
             for value in (-1, 2 ** (8 * width)):
                 f = UnsignedIntegerField(width=width, initial_value=value)
                 self.failUnlessRaises(ValueError, f.encode)
@@ -45,46 +39,8 @@ class UnsignedIntegerFieldTests(TestCase):
             encoded = unlimited.encode()
             self.failUnlessRaises(ValueError, limited.decode, encoded)
 
-    def test_encode_func_selection(self):
-        for width in (1, 2, 4, 8):
-            f = UnsignedIntegerField(width=width)
-            self.failUnless(
-                f._encode_func == f._encode_using_struct,
-                msg="Wrong encoding method. Expected _encode_using_struct")
-
-        for width in (3, 5, 6, 7, 9, 10):
-            f = UnsignedIntegerField(width=width)
-            self.failUnless(
-                f._encode_func == f._encode_using_binascii,
-                msg="Wrong encoding method. Expected _encode_using_binascii")
-
-    def test_decode_func_selection(self):
-        if hasattr(int, "from_bytes"):
-            # from_int should always be used for decoding
-            for width in range(1, 10):
-                f = UnsignedIntegerField(width=width)
-                self.failUnless(
-                    f._decode_func == f._decode_using_int,
-                    msg="Wrong decoding function"
-                )
-        else:
-            self.python2_decode_func_selection_test()
-
-    def python2_decode_func_selection_test(self):
-        for width in (1, 2, 4, 8):
-            f = UnsignedIntegerField(width=width)
-            self.failUnless(
-                f._decode_func == f._decode_using_struct,
-                msg="Wrong decoding method. Expected _decode_using_struct")
-
-        for width in (3, 5, 6, 7, 9, 10):
-            f = UnsignedIntegerField(width=width)
-            self.failUnless(
-                f._decode_func == f._decode_manually,
-                msg="Wrong decoding method. Expected _decode_manually")
-
     def test_encoding(self):
-        for width in range(1, 10):
+        for width in UnsignedIntegerField.STANDARD_WIDTHS.keys():
             expected = "\x0f" * width
             value = reduce(lambda x, y: (x << 8) + y, [0x0f] * width, 0)
             print hex(value)
@@ -92,13 +48,41 @@ class UnsignedIntegerFieldTests(TestCase):
             self.failUnlessEqual(f.encode(), expected)
 
     def test_decoding(self):
-        for width in range(1, 10):
+        for width in UnsignedIntegerField.STANDARD_WIDTHS.keys():
             encoded = "\x0f" * width
             value = reduce(lambda x, y: (x << 8) + y, [0x0f] * width, 0)
             f = UnsignedIntegerField(width=width)
             remaining = f.decode(encoded)
             self.failUnlessEqual(f.value, value, msg="Incorrect decoded value")
             self.failIf(remaining, msg="Incorrect remaining data")
+
+
+class SignedIntegerTests(TestCase):
+
+    def test_class_bounds(self):
+        for width in SignedIntegerField.STANDARD_WIDTHS.keys():
+            value_bits = 8 * width - 1
+            lower_bound = -2 ** value_bits
+            upper_bound = 2 ** value_bits - 1
+            for value in (lower_bound - 1, upper_bound + 1):
+                f = SignedIntegerField(width=width, initial_value=value)
+                self.failUnlessRaises(ValueError, f.encode)
+
+    def test_encoding_decoding(self):
+        for width in SignedIntegerField.STANDARD_WIDTHS.keys():
+            f = SignedIntegerField(width=width)
+            for value, encoded in ((-1, "\xff"),):
+                f.value = value
+                padding = "\xff" if value < 0 else "\x00"
+                encoded = encoded.rjust(width, padding)
+                self.failUnlessEqual(f.encode(), encoded)
+
+                # Flip sign just to make sure that the next test won't just have
+                # the correct value from before.
+                f.value *= -1
+                remaining = f.decode(encoded)
+                self.failIf(remaining, msg="Incorrect remaining buffer")
+                self.failUnlessEqual(f.value, value)
 
 
 class BooleanFieldTests(TestCase):

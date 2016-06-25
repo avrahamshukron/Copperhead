@@ -1,7 +1,7 @@
 import binascii
 import struct
 
-from validators import RangeValidator
+from validators import RangeValidator, MembershipValidator
 
 LITTLE = "little"
 BIG = "big"
@@ -67,16 +67,18 @@ class UnsignedIntegerField(Field):
 
     STANDARD_WIDTHS = {1: "B", 2: "H", 4: "I", 8: "Q"}
     ENDIAN = {BIG: ">", LITTLE: "<"}
+    DEFAULT_WIDTH = 4
 
     @classmethod
     def get_bounds(cls, width):
         return 0, 2 ** (8 * width) - 1
 
     def __init__(self, initial_value=0,
-                 width=4, min_value=None,
+                 width=DEFAULT_WIDTH, min_value=None,
                  max_value=None, **kwargs):
-        if width < 1:
-            raise ValueError("Invalid width: %s. Must be at least 1" % (width,))
+        if width not in self.STANDARD_WIDTHS:
+            raise ValueError("Invalid width: %s. Supported widths are %s" %
+                             (width, sorted(self.STANDARD_WIDTHS.keys())))
 
         super(UnsignedIntegerField, self).__init__(initial_value, **kwargs)
         self.width = width
@@ -93,22 +95,12 @@ class UnsignedIntegerField(Field):
         # Add user bounds validator
         self.validators.append(RangeValidator(min_value, max_value))
 
-        # Fallback encoding. Can be optimized if width is standard integer.
-        self._encode_func = self._encode_using_binascii
-
-        # Fallback decoding. Can be optimized if on Python 3.2 and above, or if
-        # width is standard integer width.
-        self._decode_func = self._decode_manually
-
-        self.struct = None
+        # Fallback decoding. Can be optimized if on Python 3.2 and above
+        self._decode_func = self._decode_using_struct
 
         width_symbol = self.STANDARD_WIDTHS.get(self.width)
-        if width_symbol is not None:
-            # Width is standard. use struct for encoding.
-            self.struct = struct.Struct(
-                "%s%s" % (self.ENDIAN[self.byte_order], width_symbol))
-            self._encode_func = self._encode_using_struct
-            self._decode_func = self._decode_using_struct
+        self.struct = struct.Struct(
+            "%s%s" % (self.ENDIAN[self.byte_order], width_symbol))
 
         from_bytes = getattr(int, "from_bytes", None)
         if from_bytes is not None:
@@ -116,23 +108,7 @@ class UnsignedIntegerField(Field):
             self._decode_func = self._decode_using_int
 
     def _encode(self):
-        # Not setting _encode = _encode_func so that subclasses could override.
-        return self._encode_func()
-
-    def _encode_using_struct(self):
         return self.struct.pack(self.value)
-
-    def _encode_using_binascii(self):
-        # Calling `hex` on a long number will return the number hexlified, with
-        # an annoying "L" at the end.
-        as_hex = hex(self.value)[2:].replace("L", "")
-        length = len(as_hex)
-        even_length = as_hex.rjust(length + length % 2, "0")
-        encoded = binascii.unhexlify(even_length)
-        encoded = encoded.rjust(self.width, "\x00")
-        if self.byte_order == LITTLE:
-            encoded = encoded[::-1]
-        return encoded
 
     def _decode(self, byte_buf):
         if len(byte_buf) < self.width:
@@ -149,15 +125,6 @@ class UnsignedIntegerField(Field):
 
     def _decode_using_struct(self, as_bytes):
         return self.struct.unpack(as_bytes)[0]
-
-    def _decode_manually(self, as_bytes):
-        if self.byte_order == LITTLE:
-            # Reverse the byte order
-            as_bytes = as_bytes[::-1]
-        # We can use the int type because it'll return signed int, same as
-        # this class
-        decoded_value = int(as_bytes.encode("hex"), 16)
-        return decoded_value
 
 
 class SignedIntegerField(UnsignedIntegerField):
@@ -181,3 +148,27 @@ class BooleanField(UnsignedIntegerField):
     def _encode(self):
         # Optimized since we only have two possible values
         return "\x01" if self.value else "\x00"
+
+
+class Enum(object):
+    def __init__(self, values):
+        """
+        Creates a new enum from a given dict of values.
+
+        :param values: A dict mapping ``name -> value``
+        :type values: dict
+        """
+        self.values = set(values.values())
+        for name, value in values.iteritems():
+            setattr(self, name, value)
+
+
+class EnumField(UnsignedIntegerField):
+
+    DEFAULT_WIDTH = 1
+
+    def __init__(self, values, **kwargs):
+        width = kwargs.pop("width", self.DEFAULT_WIDTH)
+        super(EnumField, self).__init__(width=width, **kwargs)
+        self.values = Enum(values)
+        self.validators.append(MembershipValidator(self.values))

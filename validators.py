@@ -18,4 +18,4 @@ class RangeValidator(object):
         if ((self.min is None or value >= self.min) and
                 (self.max is None or value <= self.max)):
             return True
-        raise ValueError("%s is out of [%s %s]" % (value, self.min, self.max))
+        raise ValueError("%s is out of [%s, %s]" % (value, self.min, self.max))

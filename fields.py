@@ -1,6 +1,4 @@
 import binascii
-import functools
-
 import struct
 
 from validators import RangeValidator
@@ -14,12 +12,12 @@ class Field(object):
     Base class representing Field that can be decoded/encoded
     """
 
-    validators = []
     DEFAULT_BYTE_ORDER = BIG
 
     def __init__(self, initial_value, byte_order=DEFAULT_BYTE_ORDER):
         self.value = initial_value
         self.byte_order = byte_order
+        self.validators = []
 
     def validate(self, value):
         for validator in self.validators:
@@ -71,14 +69,8 @@ class UnsignedIntegerField(Field):
     ENDIAN = {BIG: ">", LITTLE: "<"}
 
     @classmethod
-    def bounds_validator(cls, width):
-        """
-        Create a bounds validator for UnsignedInteger, for a specific width.
-
-        :param width: The integer's width, in bytes.
-        :return: A RangeValidator according to this class.
-        """
-        return RangeValidator(min_val=0, max_val=2 ** (width * 8))
+    def get_bounds(cls, width):
+        return 0, 2 ** (8 * width) - 1
 
     def __init__(self, initial_value=0,
                  width=4, min_value=None,
@@ -88,9 +80,16 @@ class UnsignedIntegerField(Field):
 
         super(UnsignedIntegerField, self).__init__(initial_value, **kwargs)
         self.width = width
+        self.min, self.max = self.get_bounds(self.width)
+
+        if min_value is not None and min_value > self.min:
+            self.min = min_value
+
+        if max_value is not None and max_value < self.max:
+            self.max = max_value
 
         # Add class-wise bounds validator
-        self.validators.append(self.bounds_validator(self.width))
+        self.validators.append(RangeValidator(self.min, self.max))
         # Add user bounds validator
         self.validators.append(RangeValidator(min_value, max_value))
 
@@ -124,7 +123,9 @@ class UnsignedIntegerField(Field):
         return self.struct.pack(self.value)
 
     def _encode_using_binascii(self):
-        as_hex = hex(self.value)[2:]
+        # Calling `hex` on a long number will return the number hexlified, with
+        # an annoying "L" at the end.
+        as_hex = hex(self.value)[2:].replace("L", "")
         length = len(as_hex)
         even_length = as_hex.rjust(length + length % 2, "0")
         encoded = binascii.unhexlify(even_length)
@@ -165,17 +166,9 @@ class SignedIntegerField(UnsignedIntegerField):
     ENDIAN = {BIG: ">", LITTLE: "<"}
 
     @classmethod
-    def bounds_validator(cls, width):
-        """
-        Create a bounds validator for SignedInteger, with a specific width.
-
-        :param width: The integer's width, in bytes.
-        :return: A RangeValidator according to this class.
-        """
+    def get_bounds(cls, width):
         value_bits = 8 * width - 1  # -1 for the sign bit
-        return RangeValidator(
-            min_val=(-2 ** value_bits),
-            max_val=2 ** value_bits - 1)
+        return -2 ** value_bits, 2 ** value_bits - 1
 
 
 class BooleanField(UnsignedIntegerField):

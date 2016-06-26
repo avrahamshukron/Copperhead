@@ -1,6 +1,9 @@
 from unittest import TestCase
 
-from fields import BooleanField, UnsignedIntegerField, SignedIntegerField
+import struct
+
+from fields import BooleanField, UnsignedIntegerField, SignedIntegerField, \
+    EnumField, Enum
 
 
 class UnsignedIntegerFieldTests(TestCase):
@@ -71,7 +74,9 @@ class SignedIntegerTests(TestCase):
     def test_encoding_decoding(self):
         for width in SignedIntegerField.STANDARD_WIDTHS.keys():
             f = SignedIntegerField(width=width)
-            for value, encoded in ((-1, "\xff"),):
+            for value, encoded in ((-1, "\xff"), (-127, "\x81"),
+                                   (0, "\x00"), (1, "\x01"),
+                                   (127, "\x7f"),):
                 f.value = value
                 padding = "\xff" if value < 0 else "\x00"
                 encoded = encoded.rjust(width, padding)
@@ -104,3 +109,51 @@ class BooleanFieldTests(TestCase):
                 rest, encoded[f.width:], msg="Remaining data incorrect")
             # Check that the value is correct
             self.assertEqual(f.value, value, msg="Decoded value incorrect")
+
+
+class EnumFieldTests(TestCase):
+
+    VALUES = {
+        "One": 1, "Two": 2, "Four": 4, "Eight": 8, "Sixteen": 16,
+    }
+    numeric_values = VALUES.values()
+    struct = struct.Struct("B")
+
+    def test_creation(self):
+        e = EnumField(values=self.VALUES)
+        self.failUnlessEqual(e.width, 1, msg="Incorrect default width")
+
+    def test_encode(self):
+        e = EnumField(values=self.VALUES)
+        for value in self.numeric_values:
+            e.value = value
+            encoded = e.encode()
+            self.failUnlessEqual(encoded, self.struct.pack(value),
+                                 msg="Incorrect encoded value")
+
+        not_members = set(range(1, 20)) - set(self.numeric_values)
+        for value in not_members:
+            e.value = value
+            self.failUnlessRaises(ValueError, e.encode)
+
+    def test_decode(self):
+        e = EnumField(values=self.VALUES)
+
+        for encoded, value in (
+                (self.struct.pack(v), v)
+                for v in self.numeric_values):
+            e.decode(encoded)
+            self.failUnlessEqual(e.value, value, msg="Incorrect decoded value")
+
+        not_members = set(range(1, 20)) - set(self.numeric_values)
+
+        for encoded in (self.struct.pack(v) for v in not_members):
+            self.failUnlessRaises(ValueError, e.decode, encoded)
+
+    def test_enum_api(self):
+        e = Enum(self.VALUES)
+        self.failUnless(hasattr(e, "One"))
+        self.failUnless(hasattr(e, "Two"))
+        self.failUnless(hasattr(e, "Four"))
+        self.failUnless(hasattr(e, "Eight"))
+        self.failUnless(hasattr(e, "Sixteen"))

@@ -38,8 +38,8 @@ class MembershipValidator(Validator):
     A validator that validates a value is a member of a group
     """
 
-    def __init__(self, values):
-        self.values = values
+    def __init__(self, enum):
+        self.values = enum.values
 
     def validate(self, value):
         if value not in self.values:

@@ -4,9 +4,11 @@ from validators import RangeValidator, MembershipValidator
 
 LITTLE = "little"
 BIG = "big"
+MSB_FIRST = BIG
+LSB_FIRST = LITTLE
 
 
-class Encodable(object):
+class Serializable(object):
 
     def encode(self):
         """
@@ -30,9 +32,15 @@ class Field(object):
     """
     Base class representing Field that can be decoded/encoded
     """
+    # The creation_counter tracks each time a Field instance is created.
+    # Used to retain order, which is important for encoding/decoding of Record
+    # objects that define several fields.
+    creation_counter = 0
 
     def __init__(self, **kwargs):
         self.validators = []
+        self.creation_counter = Field.creation_counter
+        Field.creation_counter += 1
 
     def get_default(self):
         raise NotImplementedError("Abstract class")
@@ -86,9 +94,9 @@ class Field(object):
 
 class UnsignedIntegerField(Field):
 
-    DEFAULT_BYTE_ORDER = BIG
+    DEFAULT_BYTE_ORDER = MSB_FIRST
     STANDARD_WIDTHS = {1: "B", 2: "H", 4: "I", 8: "Q"}
-    ENDIAN = {BIG: ">", LITTLE: "<"}
+    ENDIAN = {MSB_FIRST: ">", LSB_FIRST: "<"}
     DEFAULT_WIDTH = 4
     SIGNED = False
 
@@ -149,7 +157,8 @@ class UnsignedIntegerField(Field):
 
     def _decode_using_int(self, as_bytes):
         # noinspection PyUnresolvedReferences
-        return int.from_bytes(as_bytes, byteorder=self.byte_order, signed=self.SIGNED)
+        return int.from_bytes(as_bytes, byteorder=self.byte_order,
+                              signed=self.SIGNED)
 
     def _decode_using_struct(self, as_bytes):
         return self.struct.unpack(as_bytes)[0]
@@ -158,7 +167,6 @@ class UnsignedIntegerField(Field):
 class SignedIntegerField(UnsignedIntegerField):
 
     STANDARD_WIDTHS = {1: "b", 2: "h", 4: "i", 8: "q"}
-    ENDIAN = {BIG: ">", LITTLE: "<"}
     SIGNED = True
 
     @classmethod

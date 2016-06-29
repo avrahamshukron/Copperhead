@@ -1,10 +1,8 @@
+import struct
+from cStringIO import StringIO
 from unittest import TestCase
 
-import struct
-
-from cStringIO import StringIO
-
-from fields import BooleanField, UnsignedIntegerField, SignedIntegerField, \
+from fields import UnsignedIntegerField, SignedIntegerField, BooleanField, \
     EnumField, Enum
 
 

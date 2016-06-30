@@ -1,7 +1,7 @@
 from cStringIO import StringIO
 from collections import OrderedDict
 
-from fields import Serializable, Field
+from fields import Serializable, Field, UnsignedIntegerField
 
 
 class RecordOptions(object):
@@ -17,7 +17,7 @@ class RecordOptions(object):
 
 class RecordBase(type):
 
-    def __new__(meta, name, bases, attrs):
+    def __new__(mcs, name, bases, attrs):
         order = attrs.get("order")
         if order is None:
             raise ValueError(
@@ -36,7 +36,7 @@ class RecordBase(type):
 
         _meta = RecordOptions(fields)
         attrs["_meta"] = _meta
-        return super(RecordBase, meta).__new__(meta, name, bases, attrs)
+        return super(RecordBase, mcs).__new__(mcs, name, bases, attrs)
 
 
 class Record(Serializable):
@@ -69,3 +69,43 @@ class Record(Serializable):
 
     def decode(self, buf):
         pass
+
+
+def variant(cls, tag, tag_width=1):
+    class Variant(cls):
+        tag = UnsignedIntegerField(width=tag_width)
+        
+        def __init__(self, **kwargs):
+            super(Variant, self).__init__(tag=tag, **kwargs)
+
+    return Variant
+
+
+class ChoiceBase(type):
+
+    def __new__(mcs, name, bases, attrs):
+        variants = attrs.get("variants")
+        if variants is None:
+            raise ValueError(
+                "A Choice subclass must define a variants attribute. "
+                "This attribute should be a dictionary mapping between a tag - "
+                "which is an integer - to a type")
+
+        tag_width = attrs.get("tag_width")
+        if tag_width is None:
+            for base in bases:
+                tag_width = getattr(base, "tag_width")
+                if tag_width is not None:
+                    break
+        if tag_width is None:
+            tag_width = 1  # Fallback.
+
+        for tag, variant_type in variants.iteritems():
+            attrs[variant_type.__name__] = variant(
+                cls=variant_type, tag=tag, tag_width=tag_width)
+        return super(ChoiceBase, mcs).__new__(mcs, name, bases, attrs)
+
+
+class Choice(object):
+    __metaclass__ = ChoiceBase
+    variants = {}

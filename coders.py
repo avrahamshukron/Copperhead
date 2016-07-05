@@ -1,3 +1,4 @@
+from cStringIO import StringIO
 
 
 class Encoder(object):
@@ -10,9 +11,7 @@ class Encoder(object):
         :param stream: A writeable file-like object.
         :raise ValueError: If `value` could not be encoded.
         """
-        # Naive implementation. Subclasses are encourage to override if it
-        # makes more sense.
-        stream.write(self._encode(value))
+        raise NotImplementedError("Subclasses must implement")
 
     def _encode(self, value):
         """
@@ -22,7 +21,11 @@ class Encoder(object):
         :return: A sequence of bytes representing `value`
         :raise ValueError: If `value` could not be encoded.
         """
-        pass
+        # Naive implementation. Subclasses are encourage to override if it
+        # makes more sense.
+        stream = StringIO()
+        self.encode(value, stream)
+        return stream.getvalue()
 
 
 class Decoder(object):
@@ -40,7 +43,7 @@ class Decoder(object):
         :raise ValueError: If the buffer cannot be decoded.
         :return: An object decoded from the bytes read.
         """
-        pass
+        raise NotImplementedError("Subclasses must implement")
 
     def _decode(self, buf):
         """
@@ -51,7 +54,12 @@ class Decoder(object):
             remainder of the buffer.
         :raise ValueError: If the buffer cannot be decoded.
         """
-        pass
+        # Naive implementation. Subclasses are encourage to override if it
+        # makes more sense.
+        stream = StringIO(buf)
+        value = self.decode(stream)
+        remainder = stream.read()
+        return value, remainder
 
 
 # noinspection PyAbstractClass
@@ -65,7 +73,7 @@ class Coder(Encoder, Decoder):
         Return the value that is considered "default" or "empty" for this type.
          For example, this might be 0 for Integer, or False for Boolean.
         """
-        pass
+        raise NotImplementedError("Subclasses must implement")
 
 
 __all__ = (Encoder.__name__, Decoder.__name__, Coder.__name__)

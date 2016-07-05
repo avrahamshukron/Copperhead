@@ -69,11 +69,11 @@ class UnsignedInteger(Coder):
         return self.default
 
     def encode(self, value, stream):
-        if self.validate(value):
-            super(UnsignedInteger, self).encode(value, stream)
+        stream.write(self._encode(value))
 
     def _encode(self, value):
-        return self.struct.pack(value)
+        if self.validate(value):
+            return self.struct.pack(value)
 
     def _decode(self, buf):
         value = self._decode_func(buf[:self.width])

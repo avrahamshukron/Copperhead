@@ -43,13 +43,9 @@ class RecordBase(type, Coder):
     def decode(self, stream):
         # This is valid decoding since self.fields is an *Ordered*Dict, so the
         # decoding is guaranteed to happen in the correct order.
-        kwargs = {name: coder.decode_from_stream(stream) for name, coder
+        kwargs = {name: coder.decode(stream) for name, coder
                   in self.fields.iteritems()}
         return self(**kwargs)
-
-    def _decode(self, buf):
-        stream = StringIO(buf)
-        return self.decode_from_stream(stream)
 
 
 class Record(object):

@@ -1,8 +1,6 @@
-from abc import ABCMeta, abstractmethod
 
 
 class Encoder(object):
-    __metaclass__ = ABCMeta
 
     def encode(self, value, stream):
         """
@@ -16,7 +14,6 @@ class Encoder(object):
         # makes more sense.
         stream.write(self._encode(value))
 
-    @abstractmethod
     def _encode(self, value):
         """
         Encode the given value as a sequence of bytes.
@@ -29,9 +26,7 @@ class Encoder(object):
 
 
 class Decoder(object):
-    __metaclass__ = ABCMeta
 
-    @abstractmethod
     def decode(self, stream):
         """
         Decode a value from a stream.
@@ -47,7 +42,6 @@ class Decoder(object):
         """
         pass
 
-    @abstractmethod
     def _decode(self, buf):
         """
         Decode a value from a buffer.
@@ -60,13 +54,12 @@ class Decoder(object):
         pass
 
 
+# noinspection PyAbstractClass
 class Coder(Encoder, Decoder):
     """
     Aggregates both Encoder and Decoder interfaces.
     """
-    __metaclass__ = ABCMeta
 
-    @abstractmethod
     def default_value(self):
         """
         Return the value that is considered "default" or "empty" for this type.

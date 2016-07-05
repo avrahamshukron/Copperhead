@@ -1,10 +1,15 @@
 from cStringIO import StringIO
 from collections import OrderedDict
 
-from fields import Serializable, Field, EnumField
+from coders import Coder
+from primitives import Enum
+from proxy import Proxy
 
 
-class RecordBase(type):
+class RecordBase(type, Coder):
+
+    def default_value(self):
+        return self()  # Simply return an empty instance
 
     def __new__(mcs, name, bases, attrs):
         order = attrs.get("order")
@@ -15,7 +20,7 @@ class RecordBase(type):
                 "class, in the oder they are expected to be encoded/decoded.")
 
         serializables = {name: field for name, field in attrs.iteritems()
-                         if isinstance(field, Field)}
+                         if isinstance(field, Coder)}
         fields = OrderedDict()
         for field_name in order:
             if field_name not in serializables:
@@ -26,8 +31,28 @@ class RecordBase(type):
         attrs["fields"] = fields
         return super(RecordBase, mcs).__new__(mcs, name, bases, attrs)
 
+    def _encode(self, value):
+        stream = StringIO()
+        self.encode(value, stream)
+        return stream.getvalue()
 
-class Record(Serializable):
+    def encode(self, value, stream):
+        for name, coder in self.fields.iteritems():
+            coder.encode(getattr(value, name), stream)
+
+    def decode(self, stream):
+        # This is valid decoding since self.fields is an *Ordered*Dict, so the
+        # decoding is guaranteed to happen in the correct order.
+        kwargs = {name: coder.decode_from_stream(stream) for name, coder
+                  in self.fields.iteritems()}
+        return self(**kwargs)
+
+    def _decode(self, buf):
+        stream = StringIO(buf)
+        return self.decode_from_stream(stream)
+
+
+class Record(object):
 
     __metaclass__ = RecordBase
 
@@ -38,6 +63,7 @@ class Record(Serializable):
     order = ()  # Subclasses must override this field
 
     def __init__(self, **kwargs):
+        super(Record, self).__init__()
         # Values of fields which were passed to us.
         values = {name: value for name, value in kwargs.iteritems()
                   if name in self.fields}
@@ -46,27 +72,40 @@ class Record(Serializable):
             setattr(self, name, value)
 
         # Field names of the fields that
-        without_value = set(self._meta.fields.keys()) - set(values.keys())
+        without_value = set(self.fields.keys()) - set(values.keys())
         for field in without_value:
-            setattr(self, field, self._meta.fields[field].get_default())
-
-    def encode(self):
-        out = StringIO()
-        for name, field in self._meta.fields.iteritems():
-            field.encode(getattr(self, name), out)
-        return out.getvalue()
-
-    def decode(self, buf):
-        pass
+            setattr(self, field, self.fields[field].default_value())
 
 
-def variant(variant_type):
-    def creator(cls, *args, **kwargs):
-        return cls(variant_type(*args, **kwargs))
-    return creator
+class VariantProxy(Proxy):
+
+    def __init__(self, choice_class, variant_class):
+        super(VariantProxy, self).__init__(variant_class)
+        object.__setattr__(self, "_choice_class", choice_class)
+        # TODO: If variant_class is by itself a Choice, inject each of **its**
+        # variants with self as the _choice_class
+
+    @classmethod
+    def create_attrs(cls, theclass):
+        attrs = super(VariantProxy, cls).create_attrs(theclass)
+
+        def create_choice(self, *args, **kwargs):
+            variant_class = object.__getattribute__(self, "_obj")
+            variant = variant_class(*args, **kwargs)
+
+            choice_class = object.__getattribute__(self, "_choice_class")
+            # TODO: Check here if choice_class has `_choice_class` which will
+            # mean that it is a VariantProxy, then recursively call it.
+            return choice_class(variant)
+
+        attrs["__call__"] = create_choice
+        return attrs
 
 
-class ChoiceBase(type):
+class ChoiceBase(type, Coder):
+
+    def default_value(self):
+        return self(tag=self.tag_field.default_value())  # Just an empty Choice
 
     def __new__(mcs, name, bases, attrs):
         # Get the variants declared for this class.
@@ -99,17 +138,37 @@ class ChoiceBase(type):
                 "`tag_width`" % (num_variants, tag_width, max_possible))
 
         enum = {cls.__name__: tag for tag, cls in variants.iteritems()}
-        tag_field = EnumField(values=enum, width=tag_width)
+        tag_field = Enum(values=enum, width=tag_width)
         attrs["tag_field"] = tag_field
         attrs["reverse_variants"] = reverse_variants
-        for tag, variant_type in variants.iteritems():
-            attrs[variant_type.__name__] = classmethod(
-                variant(variant_type=variant_type))
+        for variant_type in variants.values():
+            attrs[variant_type.__name__] = variant_type
+        choice_class = super(ChoiceBase, mcs).__new__(mcs, name, bases, attrs)
+        return choice_class
 
-        return super(ChoiceBase, mcs).__new__(mcs, name, bases, attrs)
+    def _encode(self, value):
+        stream = StringIO()
+        self.encode(value, stream)
+        return stream.getvalue()
+
+    def encode(self, value, stream):
+        # Note here that `value` is actually a Choice instance.
+        self.tag_field.encode(value.tag, stream)
+        variant_cls = self.variants.get(value.tag)
+        variant_cls.encode(stream)
+
+    def _decode(self, buf):
+        stream = StringIO(buf)
+        return self.decode(stream)
+
+    def decode(self, stream):
+        tag = self.tag_field.decode(stream)
+        variant_cls = self.variants.get(tag)
+        return self(tag=tag, value=variant_cls.decode(stream))
 
 
 class Choice(object):
+
     __metaclass__ = ChoiceBase
 
     # These attributes will be overridden by the metaclass, but we declare them
@@ -118,33 +177,46 @@ class Choice(object):
     variants = {}
     reverse_variants = {}
 
-    def __init__(self, value):
-        self.__value = None  # Just to declare the underlying ivar in __init__
+    def __init__(self, tag, value=None):
+        self.tag = tag
         self.value = value
+        if self.value is None:
+            variant_coder = self.variants.get(self.tag)
+            self.value = variant_coder.default_value()
 
-    @property
-    def tag(self):
+
+class Sequence(Coder):
+
+    def __init__(self, element_coder, length_coder=None):
         """
-        :return: The tag matching the current value. May be `None` when value
-            is `None`
+        Initialize new Sequence.
         """
-        return self.reverse_variants.get(type(self.value))
+        self.length_coder = length_coder
+        self.element_coder = element_coder
 
-    @property
-    def value(self):
-        # The only reason this method exist, is to create the `value` property,
-        # which can then have a setter, which we actually need.
-        return self.__value
+    def default_value(self):
+        return []
 
-    @value.setter
-    def value(self, value):
-        value_type = type(value)
-        if value_type not in self.reverse_variants:
-            raise ValueError("%s is not one of the variants for this class" %
-                             (value_type,))
-        self.__value = value
+    def _encode(self, value):
+        stream = StringIO()
+        self.encode(value, stream)
+        return stream.getvalue()
 
-    def encode(self):
-        return self.tag_field.encode(self.tag) + self.value.encode()
+    def encode(self, value, stream):
+        length = len(value)
+        if self.length_coder is not None:
+            self.length_coder.encode_into_stream(length, stream)
 
+        for element in value:
+            self.element_coder.encode(element, stream)
 
+    def decode(self, stream):
+        if self.length_coder is None:
+            raise ValueError(
+                "Cannot decode a sequence from a stream without a length coder")
+
+        length = self.length_coder.decode(stream)
+        return [self.element_coder.decode(stream) for _ in xrange(length)]
+
+    def _decode(self, buf):
+        pass

@@ -144,3 +144,7 @@ class Enum(UnsignedInteger):
         super(Enum, self).__init__(width=width, **kwargs)
         self.values = Holder(**values)
         self.validators.append(MembershipValidator(self.values))
+
+
+__all__ = (UnsignedInteger.__name__, SignedInteger.__name__, Boolean.__name__,
+           Enum.__name__)

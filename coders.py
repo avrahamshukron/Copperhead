@@ -73,3 +73,6 @@ class Coder(Encoder, Decoder):
          For example, this might be 0 for Integer, or False for Boolean.
         """
         pass
+
+
+__all__ = (Encoder.__name__, Decoder.__name__, Coder.__name__)

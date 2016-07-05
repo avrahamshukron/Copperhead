@@ -220,3 +220,6 @@ class Sequence(Coder):
 
     def _decode(self, buf):
         pass
+
+
+__all__ = (Record.__name__, Choice.__name__, Sequence.__name__)

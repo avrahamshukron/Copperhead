@@ -16,30 +16,30 @@ class RecordBase(type, Coder):
         if order is None:
             raise ValueError(
                 "Subclasses of Record must define an 'order' attribute which "
-                "should be a tuple with the names of all the fields in this "
+                "should be a tuple with the names of all the members in this "
                 "class, in the oder they are expected to be encoded/decoded.")
 
         serializables = {name: field for name, field in attrs.iteritems()
                          if isinstance(field, Coder)}
-        fields = OrderedDict()
+        members = OrderedDict()
         for field_name in order:
             if field_name not in serializables:
                 raise ValueError("%s is not a Serializable field in %s" %
                                  (field_name, name))
-            fields[field_name] = serializables[field_name]
+            members[field_name] = serializables[field_name]
 
-        attrs["fields"] = fields
+        attrs["members"] = members
         return super(RecordBase, mcs).__new__(mcs, name, bases, attrs)
 
     def encode(self, value, stream):
-        for name, coder in self.fields.iteritems():
+        for name, coder in self.members.iteritems():
             coder.encode(getattr(value, name), stream)
 
     def decode(self, stream):
         # This is valid decoding since self.fields is an *Ordered*Dict, so the
         # decoding is guaranteed to happen in the correct order.
         kwargs = {name: coder.decode(stream) for name, coder
-                  in self.fields.iteritems()}
+                  in self.members.iteritems()}
         return self(**kwargs)
 
 
@@ -49,7 +49,7 @@ class Record(object):
 
     # This attribute will be overridden by the metaclass, but we declare it here
     # just so that it'll be a known attribute of the class.
-    fields = OrderedDict()
+    members = OrderedDict()
 
     order = ()  # Subclasses must override this field
 
@@ -57,15 +57,15 @@ class Record(object):
         super(Record, self).__init__()
         # Values of fields which were passed to us.
         values = {name: value for name, value in kwargs.iteritems()
-                  if name in self.fields}
+                  if name in self.members}
 
         for name, value in values.iteritems():
             setattr(self, name, value)
 
         # Field names of the fields that
-        without_value = set(self.fields.keys()) - set(values.keys())
+        without_value = set(self.members.keys()) - set(values.keys())
         for field in without_value:
-            setattr(self, field, self.fields[field].default_value())
+            setattr(self, field, self.members[field].default_value())
 
 
 class VariantProxy(Proxy):

@@ -134,7 +134,7 @@ class ChoiceBase(type, Coder):
                 "`tag_width`" % (num_variants, tag_width, max_possible))
 
         enum = {cls.__name__: tag for tag, cls in variants.iteritems()}
-        tag_field = Enum(values=enum, width=tag_width)
+        tag_field = Enum(members=enum, width=tag_width)
         attrs["tag_field"] = tag_field
         attrs["reverse_variants"] = reverse_variants
         for variant_type in variants.values():

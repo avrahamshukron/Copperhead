@@ -135,16 +135,25 @@ class Enum(UnsignedInteger):
 
     DEFAULT_WIDTH = 1
 
-    def __init__(self, values, width=DEFAULT_WIDTH, **kwargs):
+    def __init__(self, members, width=DEFAULT_WIDTH, **kwargs):
         """
         Creates a new enum from a given dict of values.
 
-        :param values: A dict mapping `name -> value`
-        :type values: dict
+        :param members: A dict mapping `name -> value`
+        :type members: dict
         """
-        super(Enum, self).__init__(width=width, **kwargs)
-        self.values = Holder(**values)
-        self.validators.append(MembershipValidator(self.values))
+        default = kwargs.pop("default", None)
+        if default is None:
+            if len(members) > 0:
+                # The default will be the lowest value in the enum's members
+                default = sorted(members.keys())[0]
+        elif default not in members:
+            raise ValueError("Default value %s is not one of %s" %
+                             (default, members,))
+
+        super(Enum, self).__init__(width=width, default=default, **kwargs)
+        self.members = Holder(**members)
+        self.validators.append(MembershipValidator(self.members))
 
 
 __all__ = (UnsignedInteger.__name__, SignedInteger.__name__, Boolean.__name__,

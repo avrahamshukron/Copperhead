@@ -156,5 +156,73 @@ class Enum(UnsignedInteger):
         self.validators.append(MembershipValidator(self.members))
 
 
+class Sequence(Coder):
+
+    def __init__(self, element_coder, length_coder=None):
+        """
+        Initialize new Sequence.
+        """
+        self.length_coder = length_coder
+        self.element_coder = element_coder
+
+    def default_value(self):
+        return []
+
+    def encode(self, value, stream):
+        self._encode_length(stream, value)
+        self._encode_elements(stream, value)
+
+    def _encode_elements(self, stream, value):
+        for element in value:
+            self.element_coder.encode(element, stream)
+
+    def _encode_length(self, stream, value):
+        length = len(value)
+        if self.length_coder is not None:
+            self.length_coder.encode(length, stream)
+
+    def _decode_length(self, stream):
+        if self.length_coder is None:
+            return -1
+        return self.length_coder.decode(stream)
+
+    def decode(self, stream):
+        count = self._decode_length(stream)
+        return self._decode_elements(count, stream)
+
+    def _decode_elements(self, count, stream):
+        if count < 0:
+            return self._decode_countless(stream)
+        return [self.element_coder.decode(stream) for _ in xrange(count)]
+
+    def _decode_countless(self, stream):
+        # If you try to decode an element from a depleted stream, you'll get a
+        # ValueError.
+        # This means we cannot distinguish between EOF and a real decode error.
+        # Because of that we cannot decode countless elements from a stream,
+        # since it is bound to fail with ValueError somewhere along the way.
+        data = stream.read()
+        items = []
+        while data:
+            item, data = self.element_coder._decode(data)
+            items.append(item)
+        return items
+
+
+class String(Sequence):
+
+    def __init__(self, length_coder=None):
+        super(String, self).__init__(None, length_coder)
+
+    def _encode_elements(self, stream, value):
+        stream.write(value)
+
+    def _decode_elements(self, count, stream):
+        return stream.read(count)
+
+    def default_value(self):
+        return ""
+
+
 __all__ = (UnsignedInteger.__name__, SignedInteger.__name__, Boolean.__name__,
-           Enum.__name__)
+           Enum.__name__, Sequence.__name__, String.__name__)

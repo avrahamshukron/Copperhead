@@ -151,41 +151,4 @@ class Choice(object):
             self.value = variant_coder.default_value()
 
 
-class Sequence(Coder):
-
-    def __init__(self, element_coder, length_coder=None):
-        """
-        Initialize new Sequence.
-        """
-        self.length_coder = length_coder
-        self.element_coder = element_coder
-
-    def default_value(self):
-        return []
-
-    def _encode(self, value):
-        stream = StringIO()
-        self.encode(value, stream)
-        return stream.getvalue()
-
-    def encode(self, value, stream):
-        length = len(value)
-        if self.length_coder is not None:
-            self.length_coder.encode_into_stream(length, stream)
-
-        for element in value:
-            self.element_coder.encode(element, stream)
-
-    def decode(self, stream):
-        if self.length_coder is None:
-            raise ValueError(
-                "Cannot decode a sequence from a stream without a length coder")
-
-        length = self.length_coder.decode(stream)
-        return [self.element_coder.decode(stream) for _ in xrange(length)]
-
-    def _decode(self, buf):
-        pass
-
-
-__all__ = (Record.__name__, Choice.__name__, Sequence.__name__)
+__all__ = (Record.__name__, Choice.__name__)

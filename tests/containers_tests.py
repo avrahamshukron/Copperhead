@@ -27,16 +27,16 @@ class SimpleRecordTest(TestCase):
         for values in (case[0] for case in self.cases):
             h = Header(**values)
             for name, value in values.iteritems():
-                self.failUnlessEqual(getattr(h, name), value)
+                self.assertEqual(getattr(h, name), value)
 
     def test_encoding(self):
         for values, expected in self.cases:
             h = Header(**values)
             buf = Header._encode(h)  # Will call `encode`
-            self.failUnlessEqual(buf, expected)
+            self.assertEqual(buf, expected)
 
     def test_decoding(self):
         for values, expected in self.cases:
             h, _ = Header._decode(expected)
             for name, value in values.iteritems():
-                self.failUnlessEqual(value, getattr(h, name))
+                self.assertEqual(value, getattr(h, name))

@@ -90,3 +90,28 @@ class Proxy(object):
         ins = object.__new__(theclass)
         theclass.__init__(ins, obj, *args, **kwargs)
         return ins
+
+
+class VariantProxy(Proxy):
+
+    def __init__(self, choice_class, variant_class):
+        super(VariantProxy, self).__init__(variant_class)
+        object.__setattr__(self, "_choice_class", choice_class)
+        # TODO: If variant_class is by itself a Choice, inject each of **its**
+        # variants with self as the _choice_class
+
+    @classmethod
+    def create_attrs(cls, theclass):
+        attrs = super(VariantProxy, cls).create_attrs(theclass)
+
+        def create_choice(self, *args, **kwargs):
+            variant_class = object.__getattribute__(self, "_obj")
+            variant = variant_class(*args, **kwargs)
+
+            choice_class = object.__getattribute__(self, "_choice_class")
+            # TODO: Check here if choice_class has `_choice_class` which will
+            # mean that it is a VariantProxy, then recursively call it.
+            return choice_class(variant)
+
+        attrs["__call__"] = create_choice
+        return attrs

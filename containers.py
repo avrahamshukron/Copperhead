@@ -31,11 +31,6 @@ class RecordBase(type, Coder):
         attrs["fields"] = fields
         return super(RecordBase, mcs).__new__(mcs, name, bases, attrs)
 
-    def _encode(self, value):
-        stream = StringIO()
-        self.encode(value, stream)
-        return stream.getvalue()
-
     def encode(self, value, stream):
         for name, coder in self.fields.iteritems():
             coder.encode(getattr(value, name), stream)

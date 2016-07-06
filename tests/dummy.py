@@ -1,9 +1,11 @@
 from containers import Record, Choice
-from primitives import UnsignedInteger, ByteOrder
+from primitives import UnsignedInteger, ByteOrder, Boolean
 
 
 class GetStatus(Record):
-    order = ()
+    is_active = Boolean()
+    uptime = UnsignedInteger(width=4)
+    order = ("is_active", "uptime")
 
 
 class Upgrade(Record):

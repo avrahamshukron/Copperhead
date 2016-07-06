@@ -1,6 +1,7 @@
-from cStringIO import StringIO
 from unittest import TestCase
-from dummy import Packet, Header
+
+from containers import RecordBase, Record
+from dummy import Header
 
 
 class SimpleRecordTest(TestCase):
@@ -24,10 +25,28 @@ class SimpleRecordTest(TestCase):
     )
 
     def test_creation(self):
+        # Test default values
+        h = Header()
+        for name, coder in h.members.iteritems():
+            self.assertEqual(coder.default_value(), getattr(h, name))
+        # Test user-defined values
         for values in (case[0] for case in self.cases):
             h = Header(**values)
             for name, value in values.iteritems():
                 self.assertEqual(getattr(h, name), value)
+
+    def test_no_order(self):
+        """
+        Try to create a Record subclass without an order defined.
+        """
+        self.assertRaises(ValueError, RecordBase, "NoOrder", (Record,), {})
+
+    def test_invalid_member(self):
+        """
+        Try to create a Record subclass with a member that is not a Coder.
+        """
+        attrs = dict(order=("foo",), foo=7)
+        self.assertRaises(ValueError, RecordBase, "NoCoder", (Record,), attrs)
 
     def test_encoding(self):
         for values, expected in self.cases:
@@ -40,3 +59,16 @@ class SimpleRecordTest(TestCase):
             h, _ = Header._decode(expected)
             for name, value in values.iteritems():
                 self.assertEqual(value, getattr(h, name))
+
+
+class NestedRecordTest(TestCase):
+
+    def test_encoding(self):
+        pass
+
+    def test_decoding(self):
+        pass
+
+
+class ChoiceTest(TestCase):
+    pass

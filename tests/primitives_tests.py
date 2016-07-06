@@ -2,7 +2,18 @@ import struct
 from cStringIO import StringIO
 from unittest import TestCase
 
+from coders import Coder
 from primitives import UnsignedInteger, SignedInteger, Boolean, Enum
+
+
+class CoderTests(TestCase):
+    def test_abstraction(self):
+        coder = Coder()
+        for func, args in (
+                (coder.decode, (None,)),
+                (coder.encode, (None, None)),
+                (coder.default_value, ())):
+            self.assertRaises(NotImplementedError, func, *args)
 
 
 class UnsignedIntegerFieldTests(TestCase):
@@ -12,14 +23,14 @@ class UnsignedIntegerFieldTests(TestCase):
         Test correct creation of an instance.
         """
         for width in (-1, 0, 3, 5, 6, 7, 9, 10):
-            self.failUnlessRaises(ValueError, UnsignedInteger, width=width)
+            self.assertRaises(ValueError, UnsignedInteger, width=width)
 
     def test_get_default(self):
         for width in UnsignedInteger.STANDARD_WIDTHS.keys():
             default = 124
             f = UnsignedInteger(width=width, default=default)
-            self.failUnlessEqual(f.width, width)
-            self.failUnlessEqual(
+            self.assertEqual(f.width, width)
+            self.assertEqual(
                 f.default_value(), default, msg="Wrong value observed")
 
     def test_class_bounds(self):
@@ -27,9 +38,9 @@ class UnsignedIntegerFieldTests(TestCase):
             for value in (-1, 2 ** (8 * width)):
                 empty = StringIO()
                 f = UnsignedInteger(width=width)
-                self.failUnlessRaises(ValueError, f.encode, value, empty)
-                self.failUnlessEqual(f.decode(StringIO("\x00" * width)), 0)
-                self.failUnlessEqual(
+                self.assertRaises(ValueError, f.encode, value, empty)
+                self.assertEqual(f.decode(StringIO("\x00" * width)), 0)
+                self.assertEqual(
                     f.decode(StringIO("\xff" * width)),
                     2 ** (8 * width) - 1
                 )
@@ -41,9 +52,9 @@ class UnsignedIntegerFieldTests(TestCase):
         limited = UnsignedInteger(min_value=min_value, max_value=max_value)
         for value in (0, min_value - 1, max_value + 1, 999999):
             buf_in = StringIO()
-            self.failUnlessRaises(ValueError, limited.encode, value, buf_in)
+            self.assertRaises(ValueError, limited.encode, value, buf_in)
             unlimited.encode(value, buf_in)
-            self.failUnlessRaises(ValueError, limited.decode, buf_in)
+            self.assertRaises(ValueError, limited.decode, buf_in)
 
     def test_encoding(self):
         for width in UnsignedInteger.STANDARD_WIDTHS.keys():
@@ -53,7 +64,7 @@ class UnsignedIntegerFieldTests(TestCase):
             out_buf = StringIO()
             f = UnsignedInteger(width=width)
             f.encode(value, out_buf)
-            self.failUnlessEqual(out_buf.getvalue(), expected)
+            self.assertEqual(out_buf.getvalue(), expected)
 
     def test_decoding(self):
         for width in UnsignedInteger.STANDARD_WIDTHS.keys():
@@ -61,8 +72,8 @@ class UnsignedIntegerFieldTests(TestCase):
             value = reduce(lambda x, y: (x << 8) + y, [0x0f] * width, 0)
             f = UnsignedInteger(width=width)
             decoded = f.decode(encoded)
-            self.failUnlessEqual(decoded, value, msg="Incorrect decoded value")
-            self.failUnlessEqual(
+            self.assertEqual(decoded, value, msg="Incorrect decoded value")
+            self.assertEqual(
                 encoded.read(), "", msg="Incorrect remaining data")
 
 
@@ -76,7 +87,7 @@ class SignedIntegerTests(TestCase):
             for value in (lower_bound - 1, upper_bound + 1):
                 f = SignedInteger(width=width)
                 out_buf = StringIO()
-                self.failUnlessRaises(ValueError, f.encode, value, out_buf)
+                self.assertRaises(ValueError, f.encode, value, out_buf)
 
     def test_encoding_decoding(self):
         for width in SignedInteger.STANDARD_WIDTHS.keys():
@@ -89,13 +100,13 @@ class SignedIntegerTests(TestCase):
                 out_buf = StringIO()
                 f.encode(value, out_buf)
                 encoded = out_buf.getvalue()
-                self.failUnlessEqual(encoded, expected_encoding)
+                self.assertEqual(encoded, expected_encoding)
 
                 out_buf.reset()
                 decoded_value = f.decode(out_buf)
-                self.failUnlessEqual(
+                self.assertEqual(
                     out_buf.read(), "", msg="Incorrect remaining buffer")
-                self.failUnlessEqual(decoded_value, value)
+                self.assertEqual(decoded_value, value)
 
 
 class BooleanFieldTests(TestCase):
@@ -116,7 +127,7 @@ class BooleanFieldTests(TestCase):
             buf_in = StringIO(encoded)
             decoded_value = f.decode(buf_in)
             # Check that the remaining data was not consumed.
-            self.failUnlessEqual(
+            self.assertEqual(
                 buf_in.read(), encoded[f.width:],
                 msg="Remaining data incorrect")
             buf_in.close()
@@ -134,41 +145,41 @@ class EnumFieldTests(TestCase):
     struct = struct.Struct("B")
 
     def test_creation(self):
-        e = Enum(values=self.VALUES)
-        self.failUnlessEqual(e.width, 1, msg="Incorrect default width")
+        e = Enum(members=self.VALUES)
+        self.assertEqual(e.width, 1, msg="Incorrect default width")
 
     def test_encode(self):
-        e = Enum(values=self.VALUES)
+        e = Enum(members=self.VALUES)
         for value in self.numeric_values:
             out_buf = StringIO()
             e.encode(value, out_buf)
-            self.failUnlessEqual(out_buf.getvalue(), self.struct.pack(value),
+            self.assertEqual(out_buf.getvalue(), self.struct.pack(value),
                                  msg="Incorrect encoded value")
             out_buf.close()
 
         not_members = set(range(1, 20)) - set(self.numeric_values)
         for value in not_members:
             out_buf = StringIO()
-            self.failUnlessRaises(ValueError, e.encode, value, out_buf)
+            self.assertRaises(ValueError, e.encode, value, out_buf)
 
     def test_decode(self):
-        e = Enum(values=self.VALUES)
+        e = Enum(members=self.VALUES)
 
         for encoded, value in (
                 (self.struct.pack(v), v)
                 for v in self.numeric_values):
             in_buf = StringIO(encoded)
             decoded_value = e.decode(in_buf)
-            self.failUnlessEqual(
+            self.assertEqual(
                 decoded_value, value, msg="Incorrect decoded value")
 
         not_members = set(range(1, 20)) - set(self.numeric_values)
         for encoded in (self.struct.pack(v) for v in not_members):
             in_buf = StringIO(encoded)
-            self.failUnlessRaises(ValueError, e.decode, in_buf)
+            self.assertRaises(ValueError, e.decode, in_buf)
 
     def test_enum_api(self):
         e = Enum(self.VALUES)
         for name in self.VALUES.keys():
-            self.failUnless(hasattr(e.values, name))
-            self.failUnlessEqual(self.VALUES[name], getattr(e.values, name))
+            self.assertTrue(hasattr(e.members, name))
+            self.assertEqual(self.VALUES[name], getattr(e.members, name))

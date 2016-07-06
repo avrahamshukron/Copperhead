@@ -113,13 +113,14 @@ class Boolean(UnsignedInteger):
     def __init__(self, default=False, **kwargs):
         # BooleanField is a 1-byte integer
         super(Boolean, self).__init__(default, width=1, **kwargs)
+        self._decode_func = self._decode_bool
 
     def _encode(self, value):
         # Optimized since we only have two possible values
         return "\x01" if value else "\x00"
 
     @staticmethod
-    def _decode_func(as_bytes):
+    def _decode_bool(as_bytes):
         return False if as_bytes == "\x00" else True
 
 

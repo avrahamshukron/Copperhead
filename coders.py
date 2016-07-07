@@ -3,17 +3,18 @@ from cStringIO import StringIO
 
 class Encoder(object):
 
-    def encode(self, value, stream):
+    def write_to(self, value, stream):
         """
         Encode a value into a stream.
 
         :param value: The value to encode.
         :param stream: A writeable file-like object.
+        :return: The number of bytes written.
         :raise ValueError: If `value` could not be encoded.
         """
         raise NotImplementedError("Subclasses must implement")
 
-    def _encode(self, value):
+    def encode(self, value):
         """
         Encode the given value as a sequence of bytes.
 
@@ -24,13 +25,13 @@ class Encoder(object):
         # Naive implementation. Subclasses are encourage to override if it
         # makes more sense.
         stream = StringIO()
-        self.encode(value, stream)
+        self.write_to(value, stream)
         return stream.getvalue()
 
 
 class Decoder(object):
 
-    def decode(self, stream):
+    def read_from(self, stream):
         """
         Decode a value from a stream.
 
@@ -45,7 +46,7 @@ class Decoder(object):
         """
         raise NotImplementedError("Subclasses must implement")
 
-    def _decode(self, buf):
+    def decode(self, buf):
         """
         Decode a value from a buffer.
 
@@ -57,7 +58,7 @@ class Decoder(object):
         # Naive implementation. Subclasses are encourage to override if it
         # makes more sense.
         stream = StringIO(buf)
-        value = self.decode(stream)
+        value = self.read_from(stream)
         remainder = stream.read()
         return value, remainder
 

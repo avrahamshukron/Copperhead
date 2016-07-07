@@ -5,14 +5,14 @@ Coder is actually an aggregate of both Encoder and Decoder classes.
 #### Encoder
 The Encoder interface define the following methods:
 
-    def encode(self, value, stream) -> None
-    def _encode(self, value) -> buffer
+    def write_to(self, value, stream) -> bytes_written
+    def encode(self, value) -> buffer
 
 #### Decoder
 The Decoder interface define the following methods:
 
-    def decode(self, stream) -> value
-    def _decode(self, buffer) -> value, remainder
+    def read_from(self, stream) -> value
+    def decode(self, buffer) -> value, remainder
 
 ### Primitive Types:
 Primitive types are classes that **inherits** from Coder.

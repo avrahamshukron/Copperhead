@@ -51,12 +51,12 @@ class SimpleRecordTest(TestCase):
     def test_encoding(self):
         for values, expected in self.cases:
             h = Header(**values)
-            buf = Header._encode(h)  # Will call `encode`
+            buf = Header.encode(h)  # Will call `write_to`
             self.assertEqual(buf, expected)
 
     def test_decoding(self):
         for values, expected in self.cases:
-            h, _ = Header._decode(expected)
+            h, _ = Header.decode(expected)
             for name, value in values.iteritems():
                 self.assertEqual(value, getattr(h, name))
 

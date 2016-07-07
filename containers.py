@@ -1,9 +1,7 @@
-from cStringIO import StringIO
 from collections import OrderedDict
 
 from coders import Coder
 from primitives import Enum
-from proxy import Proxy
 
 
 class RecordBase(type, Coder):
@@ -31,14 +29,16 @@ class RecordBase(type, Coder):
         attrs["members"] = members
         return super(RecordBase, mcs).__new__(mcs, name, bases, attrs)
 
-    def encode(self, value, stream):
+    def write_to(self, value, stream):
+        written = 0
         for name, coder in self.members.iteritems():
-            coder.encode(getattr(value, name), stream)
+            written += coder.write_to(getattr(value, name), stream)
+        return written
 
-    def decode(self, stream):
+    def read_from(self, stream):
         # This is valid decoding since self.fields is an *Ordered*Dict, so the
         # decoding is guaranteed to happen in the correct order.
-        kwargs = {name: coder.decode(stream) for name, coder
+        kwargs = {name: coder.read_from(stream) for name, coder
                   in self.members.iteritems()}
         return self(**kwargs)
 
@@ -112,25 +112,17 @@ class ChoiceBase(type, Coder):
         choice_class = super(ChoiceBase, mcs).__new__(mcs, name, bases, attrs)
         return choice_class
 
-    def _encode(self, value):
-        stream = StringIO()
-        self.encode(value, stream)
-        return stream.getvalue()
-
-    def encode(self, value, stream):
+    def write_to(self, value, stream):
         # Note here that `value` is actually a Choice instance.
-        self.tag_field.encode(value.tag, stream)
+        written = self.tag_field.write_to(value.tag, stream)
         variant_cls = self.variants.get(value.tag)
-        variant_cls.encode(stream)
+        written += variant_cls.write_to(stream)
+        return written
 
-    def _decode(self, buf):
-        stream = StringIO(buf)
-        return self.decode(stream)
-
-    def decode(self, stream):
-        tag = self.tag_field.decode(stream)
+    def read_from(self, stream):
+        tag = self.tag_field.read_from(stream)
         variant_cls = self.variants.get(tag)
-        return self(tag=tag, value=variant_cls.decode(stream))
+        return self(tag=tag, value=variant_cls.read_from(stream))
 
 
 class Choice(object):

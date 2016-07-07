@@ -1,7 +1,6 @@
 import struct
 
 from coders import Coder
-from validators import MembershipValidator, RangeValidator
 
 
 class ByteOrder(object):
@@ -26,7 +25,6 @@ class UnsignedInteger(Coder):
     def __init__(self, default=0,
                  width=DEFAULT_WIDTH, min_value=None,
                  max_value=None, byte_order=DEFAULT_BYTE_ORDER):
-        self.validators = []
 
         if width not in self.STANDARD_WIDTHS:
             raise ValueError("Invalid width: %s. Supported widths are %s" %
@@ -43,11 +41,6 @@ class UnsignedInteger(Coder):
         if max_value is not None and max_value < self.max:
             self.max = max_value
 
-        # Add class-wise bounds validator
-        self.validators.append(RangeValidator(self.min, self.max))
-        # Add user bounds validator
-        self.validators.append(RangeValidator(min_value, max_value))
-
         # Fallback decoding. Can be optimized if on Python 3.2 and above
         self._decode_func = self._decode_using_struct
 
@@ -61,32 +54,35 @@ class UnsignedInteger(Coder):
             self._decode_func = self._decode_using_int
 
     def validate(self, value):
-        for validator in self.validators:
-            validator.validate(value)
-        return True
+        if self.min <= value <= self.max:
+            return True
+
+        raise ValueError("%s is out of [%s, %s]" % (value, self.min, self.max))
 
     def default_value(self):
         return self.default
 
-    def encode(self, value, stream):
-        stream.write(self._encode(value))
+    def write_to(self, value, stream):
+        encoded = self.encode(value)
+        stream.write(encoded)
+        return len(encoded)
 
-    def _encode(self, value):
+    def encode(self, value):
         if self.validate(value):
             return self.struct.pack(value)
 
-    def _decode(self, buf):
+    def decode(self, buf):
         value = self._decode_func(buf[:self.width])
         if self.validate(value):
             remainder = buf[self.width:]
             return value, remainder
 
-    def decode(self, stream):
+    def read_from(self, stream):
         mine = stream.read(self.width)
         if not len or len(mine) < self.width:
             raise ValueError("Cannot decode - reached end of data")
-
-        return self._decode(mine)[0]  # Return only the value.
+        decoded, _ = self.decode(mine)
+        return decoded
 
     def _decode_using_int(self, as_bytes):
         # noinspection PyUnresolvedReferences
@@ -115,7 +111,7 @@ class Boolean(UnsignedInteger):
         super(Boolean, self).__init__(default, width=1, **kwargs)
         self._decode_func = self._decode_bool
 
-    def _encode(self, value):
+    def encode(self, value):
         # Optimized since we only have two possible values
         return "\x01" if value else "\x00"
 
@@ -147,13 +143,17 @@ class Enum(UnsignedInteger):
             if len(members) > 0:
                 # The default will be the lowest value in the enum's members
                 default = sorted(members.keys())[0]
-        elif default not in members:
+        elif default not in members.values:
             raise ValueError("Default value %s is not one of %s" %
                              (default, members,))
 
         super(Enum, self).__init__(width=width, default=default, **kwargs)
         self.members = Holder(**members)
-        self.validators.append(MembershipValidator(self.members))
+
+    def validate(self, value):
+        if value in self.members.values:
+            return True
+        raise ValueError("%s not a member of %s", (value, self.members))
 
 
 class Sequence(Coder):
@@ -168,34 +168,39 @@ class Sequence(Coder):
     def default_value(self):
         return []
 
-    def encode(self, value, stream):
-        self._encode_length(stream, value)
-        self._encode_elements(stream, value)
+    def write_to(self, value, stream):
+        written = self._write_length(stream, value)
+        written += self._write_elements(stream, value)
+        return written
 
-    def _encode_elements(self, stream, value):
+    def _write_elements(self, stream, value):
+        written = 0
         for element in value:
-            self.element_coder.encode(element, stream)
+            written += self.element_coder.write_to(element, stream)
+        return written
 
-    def _encode_length(self, stream, value):
+    def _write_length(self, stream, value):
         length = len(value)
+        written = 0
         if self.length_coder is not None:
-            self.length_coder.encode(length, stream)
+            written = self.length_coder.write_to(length, stream)
+        return written
 
-    def _decode_length(self, stream):
+    def _read_length(self, stream):
         if self.length_coder is None:
             return -1
-        return self.length_coder.decode(stream)
+        return self.length_coder.read_from(stream)
 
-    def decode(self, stream):
-        count = self._decode_length(stream)
-        return self._decode_elements(count, stream)
+    def read_from(self, stream):
+        count = self._read_length(stream)
+        return self._read_elements(count, stream)
 
-    def _decode_elements(self, count, stream):
+    def _read_elements(self, count, stream):
         if count < 0:
-            return self._decode_countless(stream)
-        return [self.element_coder.decode(stream) for _ in xrange(count)]
+            return self._read_countless(stream)
+        return [self.element_coder.read_from(stream) for _ in xrange(count)]
 
-    def _decode_countless(self, stream):
+    def _read_countless(self, stream):
         # If you try to decode an element from a depleted stream, you'll get a
         # ValueError.
         # This means we cannot distinguish between EOF and a real decode error.
@@ -204,9 +209,18 @@ class Sequence(Coder):
         data = stream.read()
         items = []
         while data:
-            item, data = self.element_coder._decode(data)
+            item, data = self.element_coder.decode(data)
             items.append(item)
         return items
+
+    def validate(self, elements):
+        if self.length_coder is not None:
+            self.length_coder.validate(len(elements))
+
+        for elem in elements:
+            self.element_coder.validate(elem)
+
+        return True
 
 
 class String(Sequence):
@@ -214,14 +228,19 @@ class String(Sequence):
     def __init__(self, length_coder=None):
         super(String, self).__init__(None, length_coder)
 
-    def _encode_elements(self, stream, value):
+    def _write_elements(self, stream, value):
         stream.write(value)
 
-    def _decode_elements(self, count, stream):
+    def _read_elements(self, count, stream):
         return stream.read(count)
 
     def default_value(self):
         return ""
+
+    def validate(self, value):
+        if isinstance(value, str):
+            return True
+        raise ValueError("%s is not a string" % (str(value),))
 
 
 __all__ = (UnsignedInteger.__name__, SignedInteger.__name__, Boolean.__name__,

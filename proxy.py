@@ -1,20 +1,39 @@
 class Proxy(object):
     __slots__ = ["_obj", "__weakref__"]
 
+    # A set of attribute names that will not be forwarded to the wrapped
+    # object, rather taken from - or set on - the wrapping object itself.
+    local_attributes = {"_obj", }
+
     def __init__(self, obj):
-        object.__setattr__(self, "_obj", obj)
+        self._obj = obj
 
     #
     # Proxying (special cases)
     #
     def __getattribute__(self, name):
-        return getattr(object.__getattribute__(self, "_obj"), name)
+        local_attrs = object.__getattribute__(self, "local_attributes")
+        if name not in local_attrs:
+            return getattr(object.__getattribute__(self, "_obj"), name)
+        else:
+            return object.__getattribute__(self, name)
 
     def __delattr__(self, name):
-        delattr(object.__getattribute__(self, "_obj"), name)
+        local_attrs = object.__getattribute__(self, "local_attributes")
+        if name not in local_attrs:
+            delattr(object.__getattribute__(self, "_obj"), name)
+        else:
+            object.__delattr__(self, name)
 
     def __setattr__(self, name, value):
-        setattr(object.__getattribute__(self, "_obj"), name, value)
+        local_attrs = object.__getattribute__(self, "local_attributes")
+        if name not in local_attrs:
+            setattr(object.__getattribute__(self, "_obj"), name, value)
+        else:
+            object.__setattr__(self, name, value)
+
+    def __getitem__(self, index):
+        return object.__getattribute__(self, "_obj").__getitem__(index)
 
     def __nonzero__(self):
         return bool(object.__getattribute__(self, "_obj"))
@@ -25,24 +44,28 @@ class Proxy(object):
     def __repr__(self):
         return repr(object.__getattribute__(self, "_obj"))
 
+    def __len__(self):
+        return len(object.__getattribute__(self, "_obj"))
+
+    def __hash__(self):
+        return hash(object.__getattribute__(self, "_obj"))
+
     #
     # Factories
     #
     _special_names = [
         '__abs__', '__add__', '__and__', '__call__', '__cmp__', '__coerce__',
         '__contains__', '__delitem__', '__delslice__', '__div__', '__divmod__',
-        '__eq__', '__float__', '__floordiv__', '__ge__', '__getitem__',
-        '__getslice__', '__gt__', '__hash__', '__hex__', '__iadd__', '__iand__',
-        '__idiv__', '__idivmod__', '__ifloordiv__', '__ilshift__', '__imod__',
-        '__imul__', '__int__', '__invert__', '__ior__', '__ipow__',
-        '__irshift__',
-        '__isub__', '__iter__', '__itruediv__', '__ixor__', '__le__', '__len__',
-        '__long__', '__lshift__', '__lt__', '__mod__', '__mul__', '__ne__',
-        '__neg__', '__oct__', '__or__', '__pos__', '__pow__', '__radd__',
-        '__rand__', '__rdiv__', '__rdivmod__', '__reduce__', '__reduce_ex__',
-        '__repr__', '__reversed__', '__rfloorfiv__', '__rlshift__', '__rmod__',
-        '__rmul__', '__ror__', '__rpow__', '__rrshift__', '__rshift__',
-        '__rsub__',
+        '__eq__', '__float__', '__floordiv__', '__ge__', '__getslice__',
+        '__gt__', '__hex__', '__iadd__', '__iand__', '__idiv__', '__idivmod__',
+        '__ifloordiv__', '__ilshift__', '__imod__', '__imul__', '__int__',
+        '__invert__', '__ior__', '__ipow__', '__irshift__', '__isub__',
+        '__iter__', '__itruediv__', '__ixor__', '__le__','__long__',
+        '__lshift__', '__lt__', '__mod__', '__mul__', '__ne__', '__neg__',
+        '__oct__', '__or__', '__pos__', '__pow__', '__radd__', '__rand__',
+        '__rdiv__', '__rdivmod__', '__reduce__', '__reduce_ex__', '__repr__',
+        '__reversed__', '__rfloorfiv__', '__rlshift__', '__rmod__', '__rmul__',
+        '__ror__', '__rpow__', '__rrshift__', '__rshift__', '__rsub__',
         '__rtruediv__', '__rxor__', '__setitem__', '__setslice__', '__sub__',
         '__truediv__', '__xor__', 'next',
     ]
@@ -56,17 +79,17 @@ class Proxy(object):
         return type(proxy_class_name, (cls,), namespace)
 
     @classmethod
-    def create_attrs(cls, theclass):
-        def make_method(name):
+    def create_attrs(cls, the_class):
+        def make_method(method_name):
             def method(self, *args, **kw):
-                func = getattr(object.__getattribute__(self, "_obj"), name)
+                func = getattr(self._obj, method_name)
                 return func(*args, **kw)
 
             return method
 
         namespace = {}
         for name in cls._special_names:
-            if hasattr(theclass, name):
+            if hasattr(the_class, name):
                 namespace[name] = make_method(name)
         return namespace
 
@@ -83,35 +106,10 @@ class Proxy(object):
         except KeyError:
             cls._class_proxy_cache = cache = {}
         try:
-            theclass = cache[obj.__class__]
+            the_class = cache[obj.__class__]
         except KeyError:
-            cache[obj.__class__] = theclass = cls._create_class_proxy(
+            cache[obj.__class__] = the_class = cls._create_class_proxy(
                 obj.__class__)
-        ins = object.__new__(theclass)
-        theclass.__init__(ins, obj, *args, **kwargs)
+        ins = object.__new__(the_class)
+        the_class.__init__(ins, obj, *args, **kwargs)
         return ins
-
-
-class VariantProxy(Proxy):
-
-    def __init__(self, choice_class, variant_class):
-        super(VariantProxy, self).__init__(variant_class)
-        object.__setattr__(self, "_choice_class", choice_class)
-        # TODO: If variant_class is by itself a Choice, inject each of **its**
-        # variants with self as the _choice_class
-
-    @classmethod
-    def create_attrs(cls, theclass):
-        attrs = super(VariantProxy, cls).create_attrs(theclass)
-
-        def create_choice(self, *args, **kwargs):
-            variant_class = object.__getattribute__(self, "_obj")
-            variant = variant_class(*args, **kwargs)
-
-            choice_class = object.__getattribute__(self, "_choice_class")
-            # TODO: Check here if choice_class has `_choice_class` which will
-            # mean that it is a VariantProxy, then recursively call it.
-            return choice_class(variant)
-
-        attrs["__call__"] = create_choice
-        return attrs

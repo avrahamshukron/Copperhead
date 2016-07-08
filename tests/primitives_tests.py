@@ -2,8 +2,10 @@ import struct
 from cStringIO import StringIO
 from unittest import TestCase
 
+import array
+
 from coders import Coder
-from primitives import UnsignedInteger, SignedInteger, Boolean, Enum
+from primitives import UnsignedInteger, SignedInteger, Boolean, Enum, Sequence
 
 
 class CoderTests(TestCase):
@@ -183,3 +185,46 @@ class EnumFieldTests(TestCase):
         for name in self.VALUES.keys():
             self.assertTrue(hasattr(e.members, name))
             self.assertEqual(self.VALUES[name], getattr(e.members, name))
+
+
+class SequenceTest(TestCase):
+
+    def setUp(self):
+        self.uint8 = UnsignedInteger(width=1)
+        self.uint32 = UnsignedInteger(width=4, max_value=100)
+        self.counted_sequence = Sequence(element_coder=self.uint8,
+                                         length_coder=self.uint32)
+        self.counless_sequence = Sequence(element_coder=self.uint8,
+                                          length_coder=None)
+
+    def test_default_value(self):
+        self.assertEqual(self.counted_sequence.default_value(), [])
+
+    def test_encoding_with_length(self):
+        for i in xrange(self.uint32.max):
+            items = range(i)
+            encoded = self.counted_sequence.encode(items)
+            a = array.array("B", items)
+            expected = self.uint32.encode(i) + a.tostring()
+            self.assertEqual(encoded, expected)
+
+    def test_encode_exceeding_length(self):
+        self.assertRaises(
+            ValueError, self.counted_sequence.encode, [1] * (self.uint32.max + 1))
+
+    def test_decoding_with_length(self):
+        for i in xrange(self.uint32.max):
+            expected = range(i)
+            a = array.array("B", expected)
+            encoded = self.uint32.encode(i) + a.tostring()
+            items, _ = self.counted_sequence.decode(encoded)
+            self.assertEqual(items, expected)
+
+    def test_decoding_without_length(self):
+        for i in xrange(100):
+            expected = [0xaa] * i
+            a = array.array("B", expected)
+            encoded = a.tostring()
+            items, _ = self.counless_sequence.decode(encoded)
+            self.assertEqual(items, expected)
+

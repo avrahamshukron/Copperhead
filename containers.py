@@ -2,6 +2,7 @@ from collections import OrderedDict
 
 from coders import Coder
 from primitives import Enum
+from proxy import Proxy
 
 
 class RecordBase(type, Coder):
@@ -75,17 +76,12 @@ class ChoiceBase(type, Coder):
 
     def __new__(mcs, name, bases, attrs):
         # Get the variants declared for this class.
-        variants = attrs.get("variants")
+        variants = attrs.pop("variants", None)
         if variants is None:
             raise ValueError(
                 "A Choice subclass must define a variants attribute. "
                 "This attribute should be a dictionary mapping between a tag - "
                 "which is an integer - to a type")
-
-        reverse_variants = {value: key for key, value in variants.iteritems()}
-        if len(reverse_variants) != len(variants):
-            raise ValueError(
-                "Mapping multiple tags to the same type is not allowed")
 
         # Get the tag_width.
         tag_width = attrs.get("tag_width")
@@ -106,10 +102,23 @@ class ChoiceBase(type, Coder):
         enum = {cls.__name__: tag for tag, cls in variants.iteritems()}
         tag_field = Enum(members=enum, width=tag_width)
         attrs["tag_field"] = tag_field
-        attrs["reverse_variants"] = reverse_variants
-        for variant_type in variants.values():
-            attrs[variant_type.__name__] = variant_type
+
+        # Create the class here, because we need it for the next steps
         choice_class = super(ChoiceBase, mcs).__new__(mcs, name, bases, attrs)
+
+        # Replace the actual variants with a Variant Proxy object.
+        variants = {tag: Variant(choice_class, tag, variant_type)
+                    for tag, variant_type in variants.iteritems()}
+        # Add variants and its reverse version as an attributes
+        choice_class.variants = variants
+        choice_class.reverse_variants = {
+            value: key for key, value in variants.iteritems()
+        }
+
+        # Add each variant as an attribute to the Choice class
+        for tag, variant in variants.iteritems():
+            setattr(choice_class, variant.__name__, variant)
+
         return choice_class
 
     def write_to(self, value, stream):
@@ -141,6 +150,54 @@ class Choice(object):
         if self.value is None:
             variant_coder = self.variants.get(self.tag)
             self.value = variant_coder.default_value()
+
+
+class Variant(Proxy):
+    """
+    A special object that wraps a Coder specified for a Choice.
+
+    Why do we need a Variant?
+    Say we have a Choice subclass named Command, with a variant named Upgrade.
+    The desired API of creating and Upgrade Command is Command.Upgrade().
+    For this to work we need a special object that looks like the variant's
+    class, but when __call__ed, actually creates an instance of the variant,
+    wrapped in an instance of the containing Choice.
+    This is the purpose of this class.
+    """
+
+    __slots__ = ("_tag", "_parent_choice")
+
+    local_attributes = Proxy.local_attributes.union(
+        set(__slots__)
+    )
+
+    def __init__(self, choice_class, tag, variant_class):
+        super(Variant, self).__init__(variant_class)
+        self._parent_choice = choice_class
+        self._tag = tag
+        # This is where we create the complete chain of Choices and their
+        # VariantProxy objects.
+        # If variant_class is by itself a Choice, inject each of **its**
+        # variants with self as the _choice_class
+        if issubclass(self._obj, Choice):
+            for _, variant in self._obj.variants.iteritems():
+                variant._parent_choice = self
+
+    def create_choice(self, *args, **kwargs):
+        variant = self._obj(*args, **kwargs)
+        # Now this is where the magic happens:
+        # If parent_choice is by itself a variant of another Choice, then it is
+        # actually a VariantProxy, which means its __call__ method is overridden
+        # with **this** function, thus resulting in a recursive call that will
+        # create the out-most Choice all the way up using the variants created
+        # along the way as the values.
+        return self._parent_choice(self._tag, variant)
+
+    @classmethod
+    def create_attrs(cls, the_class):
+        attrs = super(Variant, cls).create_attrs(the_class)
+        attrs["__call__"] = cls.create_choice
+        return attrs
 
 
 __all__ = (Record.__name__, Choice.__name__)

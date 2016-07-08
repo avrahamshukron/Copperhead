@@ -213,15 +213,6 @@ class Sequence(Coder):
             items.append(item)
         return items
 
-    def validate(self, elements):
-        if self.length_coder is not None:
-            self.length_coder.validate(len(elements))
-
-        for elem in elements:
-            self.element_coder.validate(elem)
-
-        return True
-
 
 class String(Sequence):
 
@@ -236,11 +227,6 @@ class String(Sequence):
 
     def default_value(self):
         return ""
-
-    def validate(self, value):
-        if isinstance(value, str):
-            return True
-        raise ValueError("%s is not a string" % (str(value),))
 
 
 __all__ = (UnsignedInteger.__name__, SignedInteger.__name__, Boolean.__name__,

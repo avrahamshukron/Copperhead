@@ -221,6 +221,7 @@ class String(Sequence):
 
     def _write_elements(self, stream, value):
         stream.write(value)
+        return len(value)
 
     def _read_elements(self, count, stream):
         return stream.read(count)

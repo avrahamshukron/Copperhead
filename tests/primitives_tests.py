@@ -5,7 +5,8 @@ from unittest import TestCase
 import array
 
 from coders import Coder
-from primitives import UnsignedInteger, SignedInteger, Boolean, Enum, Sequence
+from primitives import UnsignedInteger, SignedInteger, Boolean, Enum, Sequence, \
+    String
 
 
 class CoderTests(TestCase):
@@ -194,8 +195,8 @@ class SequenceTest(TestCase):
         self.uint32 = UnsignedInteger(width=4, max_value=100)
         self.counted_sequence = Sequence(element_coder=self.uint8,
                                          length_coder=self.uint32)
-        self.counless_sequence = Sequence(element_coder=self.uint8,
-                                          length_coder=None)
+        self.countless_sequence = Sequence(element_coder=self.uint8,
+                                           length_coder=None)
 
     def test_default_value(self):
         self.assertEqual(self.counted_sequence.default_value(), [])
@@ -208,9 +209,19 @@ class SequenceTest(TestCase):
             expected = self.uint32.encode(i) + a.tostring()
             self.assertEqual(encoded, expected)
 
+    def test_encoding_without_length(self):
+        for i in xrange(100):
+            items = range(i)
+            encoded = self.countless_sequence.encode(items)
+            a = array.array("B", items)
+            self.assertEqual(encoded, a.tostring())
+
     def test_encode_exceeding_length(self):
         self.assertRaises(
-            ValueError, self.counted_sequence.encode, [1] * (self.uint32.max + 1))
+            ValueError,
+            self.counted_sequence.encode,
+            [1] * (self.uint32.max + 1)
+        )
 
     def test_decoding_with_length(self):
         for i in xrange(self.uint32.max):
@@ -225,6 +236,44 @@ class SequenceTest(TestCase):
             expected = [0xaa] * i
             a = array.array("B", expected)
             encoded = a.tostring()
-            items, _ = self.counless_sequence.decode(encoded)
+            items, _ = self.countless_sequence.decode(encoded)
             self.assertEqual(items, expected)
 
+
+class StringTest(TestCase):
+    unlimited = String(length_coder=None)
+    limited = String(length_coder=UnsignedInteger(width=4, max_value=256))
+
+    def test_default_value(self):
+        self.assertEqual(self.limited.default_value(), "")
+
+    def test_encoding_with_length(self):
+        s = "Hello World"
+        expected = self.limited.length_coder.encode(len(s)) + s
+        self.compare_encoding(expected, s, self.limited)
+
+    def test_encoding_without_length(self):
+        s = "Hello World"
+        self.compare_encoding(s, s, self.unlimited)
+
+    def compare_encoding(self, expected, original, coder):
+        self.assertEqual(expected, coder.encode(original))
+        stream = StringIO()
+        written = coder.write_to(original, stream)
+        self.assertEqual(written, len(expected))
+        self.assertEqual(stream.getvalue(), expected)
+
+    def test_decoding_with_length(self):
+        s = "Hello World"
+        encoded = self.limited.length_coder.encode(len(s)) + s
+        self.compare_decoding(encoded, s, self.limited)
+
+    def compare_decoding(self, expected, original, coder):
+        decoded, _ = coder.decode(expected)
+        self.assertEqual(decoded, original)
+        stream = StringIO(expected)
+        self.assertEqual(coder.read_from(stream), original)
+
+    def test_decoding_without_length(self):
+        s = "Hello World"
+        self.compare_decoding(s, s, self.unlimited)

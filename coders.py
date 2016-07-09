@@ -77,4 +77,33 @@ class Coder(Encoder, Decoder):
         raise NotImplementedError("Subclasses must implement")
 
 
-__all__ = (Encoder.__name__, Decoder.__name__, Coder.__name__)
+class SelfEncodable(object):
+    """
+    Represents an object that can decode itself.
+    """
+
+    def write_to(self, stream):
+        """
+        Encode this object into a stream.
+
+        :param stream: A writeable file-like object.
+        :return: The number of bytes written.
+        :raise ValueError: If this object could not be encoded.
+        """
+        raise NotImplementedError("Subclasses must implement")
+
+    def encode(self):
+        """
+        Encode this object as a sequence of bytes.
+
+        :return: A sequence of bytes representing `value`
+        :raise ValueError: If this object could not be encoded.
+        """
+        # Naive implementation. Subclasses are encourage to override if it
+        # makes more sense.
+        stream = StringIO()
+        self.write_to(stream)
+        return stream.getvalue()
+
+
+__all__ = (Encoder.__name__, Decoder.__name__, Coder.__name__, SelfEncodable,)

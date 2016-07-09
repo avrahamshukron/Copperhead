@@ -1,6 +1,6 @@
 from collections import OrderedDict
 
-from coders import Coder
+from coders import Coder, SelfEncodable
 from primitives import Enum
 from proxy import Proxy
 
@@ -31,10 +31,8 @@ class RecordBase(type, Coder):
         return super(RecordBase, mcs).__new__(mcs, name, bases, attrs)
 
     def write_to(self, value, stream):
-        written = 0
-        for name, coder in self.members.iteritems():
-            written += coder.write_to(getattr(value, name), stream)
-        return written
+        # Note that `value` is actually a Record **instance**
+        return value.write_to(stream)
 
     def read_from(self, stream):
         # This is valid decoding since self.fields is an *Ordered*Dict, so the
@@ -44,7 +42,7 @@ class RecordBase(type, Coder):
         return self(**kwargs)
 
 
-class Record(object):
+class Record(SelfEncodable):
 
     __metaclass__ = RecordBase
 
@@ -67,6 +65,20 @@ class Record(object):
         without_value = set(self.members.keys()) - set(values.keys())
         for field in without_value:
             setattr(self, field, self.members[field].default_value())
+
+    def write_to(self, stream):
+        written = 0
+        for name, coder in self.members.iteritems():
+            written += coder.write_to(getattr(self, name), stream)
+        return written
+
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return False
+        for member in self.members.keys():
+            if getattr(self, member) != getattr(other, member):
+                return False
+        return True
 
 
 class ChoiceBase(type, Coder):
@@ -123,10 +135,7 @@ class ChoiceBase(type, Coder):
 
     def write_to(self, value, stream):
         # Note here that `value` is actually a Choice instance.
-        written = self.tag_field.write_to(value.tag, stream)
-        variant_cls = self.variants.get(value.tag)
-        written += variant_cls.write_to(stream)
-        return written
+        return value.write_to(stream)
 
     def read_from(self, stream):
         tag = self.tag_field.read_from(stream)
@@ -134,7 +143,7 @@ class ChoiceBase(type, Coder):
         return self(tag=tag, value=variant_cls.read_from(stream))
 
 
-class Choice(object):
+class Choice(SelfEncodable):
 
     __metaclass__ = ChoiceBase
 
@@ -150,6 +159,19 @@ class Choice(object):
         if self.value is None:
             variant_coder = self.variants.get(self.tag)
             self.value = variant_coder.default_value()
+
+    def write_to(self, stream):
+        written = self.tag_field.write_to(self.tag, stream)
+        variant_cls = self.variants.get(self.tag)
+        written += variant_cls.write_to(self.value, stream)
+        return written
+
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return False
+        if self.tag != other.tag:
+            return False
+        return self.value == other.value
 
 
 class Variant(Proxy):

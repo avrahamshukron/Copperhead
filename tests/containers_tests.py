@@ -1,7 +1,8 @@
+from cStringIO import StringIO
 from unittest import TestCase
 
 from containers import RecordBase, Record
-from dummy import Header
+from dummy import Header, Packet, Command, GeneralCommands, GetStatus
 
 
 class SimpleRecordTest(TestCase):
@@ -61,14 +62,36 @@ class SimpleRecordTest(TestCase):
                 self.assertEqual(value, getattr(h, name))
 
 
-class NestedRecordTest(TestCase):
+class ChoiceTest(TestCase):
+    get_status = Command.GeneralCommands.GetStatus(
+        is_active=True, uptime=0x1234)
+
+    def test_creation(self):
+
+        self.assertEqual(
+            self.get_status.tag, Command.reverse_variants[GeneralCommands])
+        self.assertIsInstance(self.get_status.value, GeneralCommands)
+
+        self.assertEqual(
+            self.get_status.value.tag,
+            GeneralCommands.reverse_variants[GetStatus])
+        self.assertIsInstance(self.get_status.value.value, GetStatus)
+
+        self.assertTrue(self.get_status.value.value.is_active)
+        self.assertEqual(self.get_status.value.value.uptime, 0x1234)
 
     def test_encoding(self):
-        pass
+        stream = StringIO()
+        # 0x54 for GeneralCommands tag, 0xfa for GetStatus tag,
+        # 0x01 for GetStatus.is_active, 0x00001234 for GetStatus.uptime
+        expected = "\x54\xfa\x01\x00\x00\x12\x34"
+        written = self.get_status.write_to(stream)
+        self.assertEqual(written, len(expected))
+        self.assertEqual(stream.getvalue(), expected)
 
     def test_decoding(self):
-        pass
-
-
-class ChoiceTest(TestCase):
-    pass
+        # Assuming encoding is tested and working
+        encoded = self.get_status.encode()
+        decoded, remainder = Command.decode(encoded)
+        self.assertEqual(remainder, "")
+        self.assertEqual(decoded, self.get_status)

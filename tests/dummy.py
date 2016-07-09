@@ -18,7 +18,7 @@ class Reset(Record):
 
 class GeneralCommands(Choice):
     variants = {
-        0x00: GetStatus,
+        0xfa: GetStatus,
         0x02: Reset
     }
 
@@ -31,7 +31,7 @@ class UpgradeCommands(Choice):
 
 class Command(Choice):
     variants = {
-        0x00: GeneralCommands,
+        0x54: GeneralCommands,
         0x01: UpgradeCommands,
     }
 

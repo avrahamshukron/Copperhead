@@ -1,8 +1,8 @@
 from cStringIO import StringIO
 from unittest import TestCase
 
-from containers import RecordBase, Record
-from dummy import Header, Packet, Command, GeneralCommands, GetStatus
+from containers import RecordBase, Record, Member
+from dummy import Header, Packet, Command, General, GetStatus
 
 
 class SimpleRecordTest(TestCase):
@@ -36,17 +36,11 @@ class SimpleRecordTest(TestCase):
             for name, value in values.iteritems():
                 self.assertEqual(getattr(h, name), value)
 
-    def test_no_order(self):
-        """
-        Try to create a Record subclass without an order defined.
-        """
-        self.assertRaises(ValueError, RecordBase, "NoOrder", (Record,), {})
-
     def test_invalid_member(self):
         """
         Try to create a Record subclass with a member that is not a Coder.
         """
-        attrs = dict(order=("foo",), foo=7)
+        attrs = dict(foo=Member(7))
         self.assertRaises(ValueError, RecordBase, "NoCoder", (Record,), attrs)
 
     def test_encoding(self):
@@ -63,18 +57,18 @@ class SimpleRecordTest(TestCase):
 
 
 class ChoiceTest(TestCase):
-    get_status = Command.GeneralCommands.GetStatus(
+    get_status = Command.General.GetStatus(
         is_active=True, uptime=0x1234)
 
     def test_creation(self):
 
         self.assertEqual(
-            self.get_status.tag, Command.reverse_variants[GeneralCommands])
-        self.assertIsInstance(self.get_status.value, GeneralCommands)
+            self.get_status.tag, Command.reverse_variants[General])
+        self.assertIsInstance(self.get_status.value, General)
 
         self.assertEqual(
             self.get_status.value.tag,
-            GeneralCommands.reverse_variants[GetStatus])
+            General.reverse_variants[GetStatus])
         self.assertIsInstance(self.get_status.value.value, GetStatus)
 
         self.assertTrue(self.get_status.value.value.is_active)

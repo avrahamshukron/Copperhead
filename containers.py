@@ -1,5 +1,10 @@
 from collections import OrderedDict
 
+import sys
+from functools import total_ordering
+
+import operator
+
 from coders import Coder, SelfEncodable
 from primitives import Enum
 from proxy import Proxy
@@ -11,22 +16,17 @@ class RecordBase(type, Coder):
         return self()  # Simply return an empty instance
 
     def __new__(mcs, name, bases, attrs):
-        order = attrs.get("order")
-        if order is None:
-            raise ValueError(
-                "Subclasses of Record must define an 'order' attribute which "
-                "should be a tuple with the names of all the members in this "
-                "class, in the oder they are expected to be encoded/decoded.")
-
-        serializables = {name: field for name, field in attrs.iteritems()
-                         if isinstance(field, Coder)}
+        coders = {name: field for name, field in attrs.iteritems()
+                  if isinstance(field, Member)}
+        coder_items = coders.items()
+        coder_items.sort(key=operator.itemgetter(1))
         members = OrderedDict()
-        for field_name in order:
-            if field_name not in serializables:
-                raise ValueError("%s is not a Serializable field in %s" %
-                                 (field_name, name))
-            members[field_name] = serializables[field_name]
+        for member_name, member in coder_items:
+            if not isinstance(member.coder, Coder):
+                raise ValueError("Member must contain a Coder subclass")
+            members[member_name] = member.coder
 
+        attrs.update(members)
         attrs["members"] = members
         return super(RecordBase, mcs).__new__(mcs, name, bases, attrs)
 
@@ -42,6 +42,27 @@ class RecordBase(type, Coder):
         return self(**kwargs)
 
 
+@total_ordering
+class Member(object):
+    creation_counter = 0
+
+    def __init__(self, coder, order=None):
+        self.creation_counter = Member.creation_counter
+        Member.creation_counter += 1
+        self.coder = coder
+        self.order = order if order is not None else sys.maxint
+
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return False
+        return self.coder == other.coder and self.order == other.order
+
+    def __lt__(self, other):
+        if self.order < other.order:
+            return True
+        return self.creation_counter < other.creation_counter
+
+
 class Record(SelfEncodable):
 
     __metaclass__ = RecordBase
@@ -49,8 +70,6 @@ class Record(SelfEncodable):
     # This attribute will be overridden by the metaclass, but we declare it here
     # just so that it'll be a known attribute of the class.
     members = OrderedDict()
-
-    order = ()  # Subclasses must override this field
 
     def __init__(self, **kwargs):
         super(Record, self).__init__()

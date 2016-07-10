@@ -106,4 +106,5 @@ class SelfEncodable(object):
         return stream.getvalue()
 
 
-__all__ = (Encoder.__name__, Decoder.__name__, Coder.__name__, SelfEncodable,)
+__all__ = (Encoder.__name__, Decoder.__name__, Coder.__name__,
+           SelfEncodable.__name__,)

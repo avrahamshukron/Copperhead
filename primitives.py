@@ -4,13 +4,16 @@ from coders import Coder
 
 
 class ByteOrder(object):
-    LITTLE = "little"
-    BIG = "big"
-    MSB_FIRST = BIG
-    LSB_FIRST = LITTLE
+    _LITTLE = "little"  # Deprecated. Use LSB_FIRST
+    _BIG = "big"  # Deprecated. Use MSB_FIRST
+    MSB_FIRST = _BIG
+    LSB_FIRST = _LITTLE
 
 
 class UnsignedInteger(Coder):
+    """
+    A Coder capable of encoding/decoding unsigned integers.
+    """
 
     DEFAULT_BYTE_ORDER = ByteOrder.MSB_FIRST
     STANDARD_WIDTHS = {1: "B", 2: "H", 4: "I", 8: "Q"}
@@ -25,6 +28,24 @@ class UnsignedInteger(Coder):
     def __init__(self, default=0,
                  width=DEFAULT_WIDTH, min_value=None,
                  max_value=None, byte_order=DEFAULT_BYTE_ORDER):
+        """
+        Initialize a new UnsignedInteger Coder.
+
+        :param default: The default value of this coder.
+        :param width: The number of bytes used to represent values by this
+            coder. This parameter imposes boundaries on the values that can be
+            encoded / decoded. For example, if width = 1, this coder cannot
+            encode the value 256, since it cannot be represented by 1 byte.
+        :param min_value: A user-defined lower limit for valid values of this
+            coder. In order for this value to be considered, it has to be
+            greater than the natural lower limit of the coder, which is 0.
+        :param max_value: A user-defined upper limit for valid values of this
+            coder. In order for this value to be considered, it has to be
+            lower than the natural upper limit of the coder, which is
+            ``2 ** (8 * width)``
+        :param byte_order: The byte-order of this coder. Must be one of
+            ByteOrder's values.
+        """
 
         if width not in self.STANDARD_WIDTHS:
             raise ValueError("Invalid width: %s. Supported widths are %s" %
@@ -105,6 +126,9 @@ class SignedInteger(UnsignedInteger):
 
 
 class Boolean(UnsignedInteger):
+    """
+    A Coder capable of encoding/decoding Boolean values.
+    """
 
     def __init__(self, default=False, **kwargs):
         # BooleanField is a 1-byte integer
@@ -112,7 +136,7 @@ class Boolean(UnsignedInteger):
         self._decode_func = self._decode_bool
 
     def encode(self, value):
-        # Optimized since we only have two possible values
+        # Optimized, since we only have two possible values
         return "\x01" if value else "\x00"
 
     @staticmethod
@@ -128,6 +152,9 @@ class Holder(object):
 
 
 class Enum(UnsignedInteger):
+    """
+    A Coder for a closed, named set of Unsigned Integers.
+    """
 
     DEFAULT_WIDTH = 1
 
@@ -215,6 +242,11 @@ class Sequence(Coder):
 
 
 class String(Sequence):
+    """
+    Copperhead does not have a special type for string, it just have a
+    `Sequence` of `Char`. Python is the other way around.
+    This class is a special version of Sequence, designed for Python strings.
+    """
 
     def __init__(self, length_coder=None):
         super(String, self).__init__(None, length_coder)

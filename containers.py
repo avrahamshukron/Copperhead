@@ -11,23 +11,39 @@ from proxy import Proxy
 
 
 class RecordBase(type, Coder):
+    """
+    Metaclass for Record
+    """
 
     def default_value(self):
         return self()  # Simply return an empty instance
 
     def __new__(mcs, name, bases, attrs):
+        """
+        Create a new Record (sub)class
+        """
+        # Extract all the attributes of type Member.
         coders = {name: field for name, field in attrs.iteritems()
                   if isinstance(field, Member)}
+        for member_name, member in coders.iteritems():
+            if not isinstance(member.coder, Coder):
+                raise ValueError(
+                    "%s.%s: Member does not contain a Coder subclass" %
+                    (name, member_name))
+
+        # Sort all the members.
         coder_items = coders.items()
         coder_items.sort(key=operator.itemgetter(1))
+
+        # Extract the actual coders, and throw away the Member wrapper.
         members = OrderedDict()
         for member_name, member in coder_items:
-            if not isinstance(member.coder, Coder):
-                raise ValueError("Member must contain a Coder subclass")
             members[member_name] = member.coder
-
         attrs.update(members)
+
+        # Add `members` to the class
         attrs["members"] = members
+        # Create and return the class
         return super(RecordBase, mcs).__new__(mcs, name, bases, attrs)
 
     def write_to(self, value, stream):
@@ -44,9 +60,19 @@ class RecordBase(type, Coder):
 
 @total_ordering
 class Member(object):
+    """
+    Represents a member of a record.
+    """
     creation_counter = 0
 
     def __init__(self, coder, order=None):
+        """
+        Initialize a new Member.
+
+        :param coder: A Coder object
+        :param order: Optional. User-defined order to override the default
+            order, which is the order of declaration.
+        """
         self.creation_counter = Member.creation_counter
         Member.creation_counter += 1
         self.coder = coder
@@ -64,7 +90,10 @@ class Member(object):
 
 
 class Record(SelfEncodable):
-
+    """
+    An object that holds multiple "Member", which are attributes that will be
+    encoded / decoded by a certain order.
+    """
     __metaclass__ = RecordBase
 
     # This attribute will be overridden by the metaclass, but we declare it here
@@ -101,11 +130,17 @@ class Record(SelfEncodable):
 
 
 class ChoiceBase(type, Coder):
+    """
+    Metaclass for Choice
+    """
 
     def default_value(self):
         return self(tag=self.tag_field.default_value())  # Just an empty Choice
 
     def __new__(mcs, name, bases, attrs):
+        """
+        Create a new Choice (sub)class.
+        """
         # Get the variants declared for this class.
         variants = attrs.pop("variants", None)
         if variants is None:
@@ -130,6 +165,7 @@ class ChoiceBase(type, Coder):
                 "the number of variants below %s, or declare a higher "
                 "`tag_width`" % (num_variants, tag_width, max_possible))
 
+        # Create the `tag_field` enum field for this class.
         enum = {cls.__name__: tag for tag, cls in variants.iteritems()}
         tag_field = Enum(members=enum, width=tag_width)
         attrs["tag_field"] = tag_field
@@ -163,7 +199,10 @@ class ChoiceBase(type, Coder):
 
 
 class Choice(SelfEncodable):
-
+    """
+    Represents an object that can be interpreted in multiple ways, each
+    distinguished by a special identifier called "tag".
+    """
     __metaclass__ = ChoiceBase
 
     # These attributes will be overridden by the metaclass, but we declare them

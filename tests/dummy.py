@@ -1,13 +1,10 @@
 from containers import Record, Choice, Member
-from primitives import UnsignedInteger, ByteOrder, Boolean, String
+from primitives import UnsignedInteger, Boolean, String
 
 
 class GetStatus(Record):
     is_active = Member(Boolean())
     uptime = Member(UnsignedInteger(width=4))
-
-
-
 
 
 class Reset(Record):

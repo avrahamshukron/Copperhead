@@ -113,6 +113,29 @@ class UnsignedInteger(Coder):
     def _decode_using_struct(self, as_bytes):
         return self.struct.unpack(as_bytes)[0]
 
+    @classmethod
+    def capable_of(cls, max_value, **kwargs):
+        """
+        Return an instance of this class that is capable of encoding / decoding
+        values up to at least ``max_value``
+
+        :param max_value: The maximum value the coder should support.
+        :return: An instance of UnsignedInteger capable of encoding / decoding
+            values up to at least ``max_value``
+        """
+        capable_width = None
+        for width in sorted(cls.STANDARD_WIDTHS.keys()):
+            if 2 ** (8 * width) >= max_value:
+                capable_width = width
+                break
+        if capable_width is None:
+            raise ValueError(
+                "Cannot create %s coder capable of handling %s. Value is too "
+                "large for standard integer widths" % (cls.__name__, max_value)
+            )
+
+        return cls(width=capable_width, max_value=max_value, **kwargs)
+
 
 class SignedInteger(UnsignedInteger):
 
@@ -184,21 +207,60 @@ class Enum(UnsignedInteger):
 
 
 class Sequence(Coder):
+    """
+    A Sequence is a series of elements of the same type.
 
-    def __init__(self, element_coder, length_coder=None):
+    A sequence can be limited by count, or it can be unlimited.
+    The limit is represented by a coder, usually UnsignedInteger.
+    If a sequence is limited, the number of element is encoded first, with the
+    actual element following.
+    When decoding a counted sequence, the count is decoded first, and then only
+    `count` element are decoded.
+    When decoding a countless sequence, the entire buffer/stream is decoded.
+    """
+
+    def __init__(self, element_coder, max_length=None,
+                 min_length=0, include_length=False, length_width=None):
         """
         Initialize new Sequence.
+
+        :param element_coder: A Coder for the elements in this sequence.
+        :param max_length: The maximum number of elements allowed.
+        :param min_length: Optional. The minimal number of elements to
+            encode / decode. Defaults to 0.
+        :param include_length: Whether to encode the number of elements as a
+            prefix when encoding the sequence.
+        :param length_width: The number of bytes to use when encoding the number
+            of elements.
         """
-        self.length_coder = length_coder
+        if max_length is None and length_width is None:
+            raise ValueError(
+                "You must specify either max_length or length_width. Unbound "
+                "sequences are not allowed.")
         self.element_coder = element_coder
+        self.max = max_length
+        self.min = min_length
+        self.include_length = include_length
+        self.length_width = length_width
+        self.length_coder = UnsignedInteger.capable_of(
+            self.max, min_value=self.min)
 
     def default_value(self):
         return []
 
+    def validate(self, value):
+        count = len(value)
+        if not self.min <= count <= self.max:
+            raise ValueError(
+                "Number of elements (%s) is not in [%s, %s]" %
+                (count, self.min, self.max))
+        return True
+
     def write_to(self, value, stream):
-        written = self._write_length(stream, value)
-        written += self._write_elements(stream, value)
-        return written
+        if self.validate(value):
+            written = self._write_length(stream, value)
+            written += self._write_elements(stream, value)
+            return written
 
     def _write_elements(self, stream, value):
         written = 0
@@ -209,18 +271,20 @@ class Sequence(Coder):
     def _write_length(self, stream, value):
         length = len(value)
         written = 0
-        if self.length_coder is not None:
+        if self.include_length:
             written = self.length_coder.write_to(length, stream)
         return written
 
-    def _read_length(self, stream):
-        if self.length_coder is None:
-            return -1
-        return self.length_coder.read_from(stream)
-
     def read_from(self, stream):
         count = self._read_length(stream)
-        return self._read_elements(count, stream)
+        elements = self._read_elements(count, stream)
+        if self.validate(elements):
+            return elements
+
+    def _read_length(self, stream):
+        if not self.include_length:
+            return -1
+        return self.length_coder.read_from(stream)
 
     def _read_elements(self, count, stream):
         if count < 0:
@@ -235,10 +299,21 @@ class Sequence(Coder):
         # since it is bound to fail with ValueError somewhere along the way.
         data = stream.read()
         items = []
-        while data:
+        while data and len(items) < self.max:
             item, data = self.element_coder.decode(data)
             items.append(item)
         return items
+
+
+class Array(Sequence):
+    """
+    Array is a sequence with fixed size.
+    """
+
+    def __init__(self, element_coder, size):
+        super(Array, self).__init__(
+            element_coder=element_coder, min_length=size, max_length=size,
+            include_length=False, length_width=None)
 
 
 class String(Sequence):
@@ -248,8 +323,9 @@ class String(Sequence):
     This class is a special version of Sequence, designed for Python strings.
     """
 
-    def __init__(self, length_coder=None):
-        super(String, self).__init__(None, length_coder)
+    def __init__(self, **kwargs):
+        coder = kwargs.pop("element_coder", None)
+        super(String, self).__init__(element_coder=coder, **kwargs)
 
     def _write_elements(self, stream, value):
         stream.write(value)

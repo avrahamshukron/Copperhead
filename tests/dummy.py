@@ -20,7 +20,7 @@ class General(Choice):
 
 class Command(Choice):
     class Upgrade(Record):
-        path = String()
+        path = String(max_length=1024)
 
     variants = {
         0x54: General,

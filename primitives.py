@@ -318,8 +318,6 @@ class Array(Sequence):
 
 class String(Sequence):
     """
-    Copperhead does not have a special type for string, it just have a
-    `Sequence` of `Char`. Python is the other way around.
     This class is a special version of Sequence, designed for Python strings.
     """
 

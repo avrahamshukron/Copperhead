@@ -233,14 +233,14 @@ class SequenceTest(TestCase):
         self.assertRaises(ValueError, bounded.decode, to_decode)
 
     def test_decoding_with_length(self):
-        for i in xrange(self.with_length.max):
+        for i in (self.with_length.min, self.with_length.max):
             expected = [0x12] * i
             encoded = self.with_length.encode(expected)
             items, _ = self.with_length.decode(encoded)
             self.assertEqual(items, expected)
 
     def test_decoding_without_length(self):
-        for i in xrange(100):
+        for i in (self.without_length.min, self.without_length.max):
             expected = [0xaa] * i
             a = array.array("B", expected)
             encoded = a.tostring()

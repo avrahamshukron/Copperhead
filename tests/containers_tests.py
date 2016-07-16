@@ -1,8 +1,9 @@
 from cStringIO import StringIO
 from unittest import TestCase
 
-from containers import RecordBase, Record, Member
-from dummy import Header, Packet, Command, General, GetStatus
+from containers import RecordBase, Record, Member, BitMaskedIntegerMeta, \
+    BitMaskedInteger
+from dummy import Header, Packet, Command, General, GetStatus, Flags
 
 
 class SimpleRecordTest(TestCase):
@@ -89,3 +90,53 @@ class ChoiceTest(TestCase):
         decoded, remainder = Command.decode(encoded)
         self.assertEqual(remainder, "")
         self.assertEqual(decoded, self.get_status)
+
+
+class BitMaskedIntegerTest(TestCase):
+    def setUp(self):
+        self.example_values = {
+            "packet_type": 2,  # 2 bits
+            "protocol": 1,  # 2 bits
+            "request_ack": 1,  # 1 bit
+            "field_d": 5  # 3 bits
+        }
+
+    def test_init(self):
+        f = Flags(**self.example_values)
+        for name, value in self.example_values.iteritems():
+            self.assertEqual(value, getattr(f, name))
+
+    def test_equation(self):
+        f1 = Flags(**self.example_values)
+        f2 = Flags(**self.example_values)
+        self.assertEqual(f1, f2)
+
+        f1.packet_type = 1
+        self.assertNotEqual(f1, f2)
+
+        self.assertNotEqual(f1, "fd")  # different type
+
+    def test_default(self):
+        f = Flags.default_value()
+        for name in f.masks.iterkeys():
+            self.assertEqual(getattr(f, name), 0)
+
+    def test_no_width(self):
+        self.assertRaises(
+            ValueError,
+            BitMaskedIntegerMeta,
+            "NoWidth",  # Name
+            (BitMaskedInteger,),  # Bases
+            {}  # Attrs
+        )
+
+    def test_encoding(self):
+        binary = "\x9d"
+        f = Flags(**self.example_values)
+        encoded = f.encode()
+        self.assertEqual(encoded, binary)
+        f2, _ = Flags.decode(binary)
+        self.assertEqual(f, f2)
+        
+
+

@@ -6,7 +6,7 @@ from functools import total_ordering
 import operator
 
 from coders import Coder, SelfEncodable
-from primitives import Enum
+from primitives import Enum, UnsignedInteger
 from proxy import Proxy
 
 
@@ -278,6 +278,104 @@ class Variant(Proxy):
         attrs = super(Variant, cls).create_attrs(the_class)
         attrs["__call__"] = cls.create_choice
         return attrs
+
+
+# noinspection PyProtectedMember
+class BitMask(object):
+    """
+    Simple descriptor class for bit-mask fields.
+    """
+    __slots__ = ("mask", "shift")
+
+    def __init__(self, mask):
+        """
+        Initialize new BitMask field.
+
+        :param mask: int: the bit-mask for this field.
+        """
+        self.mask = mask
+        # Find the index of the first "1" bit from the right. This index will
+        # be used to extract the value of this specific field from the
+        # containing integer.
+        binary = bin(mask)[2:]  # Removes the "0b" prefix
+        self.shift = len(binary)
+        for index, bit in enumerate(reversed(binary)):
+            if bit == "1":
+                self.shift = index
+                break
+
+    def __get__(self, instance, owner):
+        return (instance._value & self.mask) >> self.shift
+
+    def __set__(self, instance, value):
+        instance._value |= (self.mask & (value << self.shift))
+
+
+class BitMaskedIntegerMeta(type, Coder):
+    """
+    Meta class for creating bitmasked integer classes.
+    """
+
+    def __new__(mcs, name, bases, attrs):
+        if "width" not in attrs:
+            raise ValueError("BitMask field must define the width attribute")
+
+        width = attrs.get("width")
+        coder = UnsignedInteger(width=width)
+        attrs["_coder"] = coder
+
+        masks = {name: value for name, value in attrs.iteritems()
+                 if isinstance(value, BitMask)}
+        attrs["masks"] = masks
+        return super(BitMaskedIntegerMeta, mcs).__new__(mcs, name, bases, attrs)
+
+    def write_to(self, value, stream):
+        # value is an instance of BitFields
+        return value.write_to(stream)
+
+    def read_from(self, stream):
+        value = self._coder.read_from(stream)
+        return self.from_int(value)
+
+    def default_value(self):
+        return self()
+
+
+class BitMaskedInteger(SelfEncodable):
+    __metaclass__ = BitMaskedIntegerMeta
+    width = 1  # Subclasses must override
+    _coder = None  # Will be set by the metaclass
+    masks = {}  # Will be set by the metaclass
+
+    @classmethod
+    def from_int(cls, value):
+        v = cls()
+        v._value = value
+        return v
+
+    def __init__(self, **kwargs):
+        self._value = 0  # start zeroed.
+        mine = {name: value for name, value in kwargs.iteritems()
+                if name in self.masks}
+        for name, value in mine.iteritems():
+            setattr(self, name, value)
+
+    def write_to(self, stream):
+        return self._coder.write_to(self._value, stream)
+
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return False
+        return self._value == other._value
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __str__(self):
+        return "{name}: {masks}".format(
+            name=self.__class__.__name__,
+            masks={name: getattr(self, name) for name in self.masks.iterkeys()}
+        )
 
 
 __all__ = (Record.__name__, Choice.__name__)

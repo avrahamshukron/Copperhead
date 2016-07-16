@@ -1,4 +1,4 @@
-from containers import Record, Choice, Member
+from containers import Record, Choice, Member, BitMaskedInteger, BitMask
 from primitives import UnsignedInteger, Boolean, String
 
 
@@ -26,6 +26,14 @@ class Command(Choice):
         0x54: General,
         0x01: Upgrade,
     }
+
+
+class Flags(BitMaskedInteger):
+    width = 1
+    packet_type = BitMask(0b11000000)
+    protocol = BitMask(0b00110000)
+    request_ack = BitMask(0b00001000)
+    field_d = BitMask(0b00000111)
 
 
 class Header(Record):

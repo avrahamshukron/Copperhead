@@ -60,15 +60,26 @@ class RecordBase(type, Coder):
 
 @total_ordering
 class Member(object):
-
     """
     Represents a member of a record.
+
+    Member objects define the order in which each record field will be
+    encoded / decoded.
     """
+
+    # Used to obtain the order of members declared in a Record subclass.
     creation_counter = 0
 
     def __init__(self, coder, order=None):
         """
         Initialize a new Member.
+
+        By default, members are ordered of their declaration.
+        The user can override this behavior by passing the `order` parameter for
+        some or all of the members.
+        If an order value is specified for a member, it'll always come before
+        any field that doesn't have an order defined for it. If two members have
+        order defined, they will be ordered by it.
 
         :param coder: A Coder object
         :param order: Optional. User-defined order to override the default
@@ -105,13 +116,15 @@ class Member(object):
                 (self.__class__.__name__,
                  other.__class__.__name__))
 
-        # User defined order precedes creation order
+        # I have user-define order.
         if self._user_defined_order:
             return self.order < other.order
 
         if other._user_defined_order:
+            # I don't have user-defined order, but `other` has.
             return False
 
+        # Default. Decide by creation order.
         return self.creation_counter < other.creation_counter
 
 
@@ -241,6 +254,13 @@ class Choice(SelfEncodable):
     reverse_variants = {}
 
     def __init__(self, tag, value=None):
+        """
+        Initialize a new Choice instance.
+
+        :param tag: The tag of this instance. Must be one of
+            Class.tag_field.members
+        :param value: Optional. A value corresponding to `tag`.
+        """
         self.tag = tag
         self.value = value
         if self.value is None:
@@ -276,6 +296,7 @@ class Variant(Proxy):
 
     __slots__ = ("_tag", "_parent_choice")
 
+    # Attributes which are not proxied
     local_attributes = Proxy.local_attributes.union(
         set(__slots__)
     )
@@ -305,6 +326,8 @@ class Variant(Proxy):
     @classmethod
     def create_attrs(cls, the_class):
         attrs = super(Variant, cls).create_attrs(the_class)
+        # Make this proxy callable, ultimately resulting in it being a `type`,
+        # since it is now capable of creating instances.
         attrs["__call__"] = cls.create_choice
         return attrs
 
@@ -323,15 +346,12 @@ class BitMask(object):
         :param mask: int: the bit-mask for this field.
         """
         self.mask = mask
-        # Find the index of the first "1" bit from the right. This index will
-        # be used to extract the value of this specific field from the
-        # containing integer.
-        binary = bin(mask)[2:]  # Removes the "0b" prefix
-        self.shift = len(binary)
-        for index, bit in enumerate(reversed(binary)):
-            if bit == "1":
-                self.shift = index
-                break
+        # Find the index of the first "1" bit from the right. This index will be
+        # used to extract the value of this specific field from the containing
+        # integer. If no 1 is found, the mask is 0 which is meaningless. In that
+        # case, shift will be also 0.
+        binary = bin(mask)[2:][::-1]  # Remove the '0b' and reverse.
+        self.shift = max(binary.find("1"), 0)
 
     def __get__(self, instance, owner):
         return (instance._value & self.mask) >> self.shift

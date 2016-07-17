@@ -3,9 +3,9 @@ import struct
 from cStringIO import StringIO
 from unittest import TestCase
 
-from coders import Coder
-from primitives import UnsignedInteger, SignedInteger, Boolean, Enum, Sequence,\
-    String
+from protopy.coders import Coder
+from protopy.primitives import UnsignedInteger, SignedInteger, Boolean, Enum, \
+    Sequence, String
 
 
 class CoderTests(TestCase):
@@ -19,7 +19,6 @@ class CoderTests(TestCase):
 
 
 class UnsignedIntegerFieldTests(TestCase):
-
     def test_creation(self):
         """
         Test correct creation of an instance.
@@ -80,7 +79,6 @@ class UnsignedIntegerFieldTests(TestCase):
 
 
 class SignedIntegerTests(TestCase):
-
     def test_class_bounds(self):
         for width in SignedInteger.STANDARD_WIDTHS.keys():
             value_bits = 8 * width - 1
@@ -112,7 +110,6 @@ class SignedIntegerTests(TestCase):
 
 
 class BooleanFieldTests(TestCase):
-
     def test_encoding(self):
         f = Boolean()
         for value, expected in (
@@ -139,7 +136,6 @@ class BooleanFieldTests(TestCase):
 
 
 class EnumFieldTests(TestCase):
-
     VALUES = {
         "One": 1, "Two": 2, "Four": 4, "Eight": 8, "Sixteen": 16,
     }
@@ -188,7 +184,6 @@ class EnumFieldTests(TestCase):
 
 
 class SequenceTest(TestCase):
-
     def setUp(self):
         self.uint8 = UnsignedInteger(width=1)
         self.with_length = Sequence(element_coder=self.uint8,

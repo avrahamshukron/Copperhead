@@ -1,5 +1,5 @@
-from containers import Record, Choice, Member, BitMaskedInteger, BitMask
-from primitives import UnsignedInteger, Boolean, String
+from protopy.containers import Record, Choice, Member, BitMaskedInteger, BitMask
+from protopy.primitives import UnsignedInteger, Boolean, String
 
 
 class GetStatus(Record):

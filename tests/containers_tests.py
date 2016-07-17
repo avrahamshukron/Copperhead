@@ -1,8 +1,8 @@
 from cStringIO import StringIO
 from unittest import TestCase
 
-from containers import RecordBase, Record, Member, BitMaskedIntegerMeta, \
-    BitMaskedInteger
+from protopy.containers import RecordBase, Record, Member, \
+    BitMaskedIntegerMeta, BitMaskedInteger
 from dummy import Header, Command, General, GetStatus, Flags
 
 

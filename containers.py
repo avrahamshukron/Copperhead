@@ -60,6 +60,7 @@ class RecordBase(type, Coder):
 
 @total_ordering
 class Member(object):
+
     """
     Represents a member of a record.
     """
@@ -76,16 +77,41 @@ class Member(object):
         self.creation_counter = Member.creation_counter
         Member.creation_counter += 1
         self.coder = coder
+        self._user_defined_order = order is not None
         self.order = order if order is not None else sys.maxint
 
     def __eq__(self, other):
         if not isinstance(other, type(self)):
             return False
-        return self.coder == other.coder and self.order == other.order
+
+        if self.coder != other.coder:
+            return False
+
+        if self._user_defined_order != other._user_defined_order:
+            return False
+
+        if self._user_defined_order and other._user_defined_order:
+            return self.order == other.order
+
+        return self.creation_counter == other.creation_counter
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
     def __lt__(self, other):
-        if self.order < other.order:
-            return True
+        if not isinstance(other, type(self)):
+            raise ValueError(
+                "Cannot compare %s with %s" %
+                (self.__class__.__name__,
+                 other.__class__.__name__))
+
+        # User defined order precedes creation order
+        if self._user_defined_order:
+            return self.order < other.order
+
+        if other._user_defined_order:
+            return False
+
         return self.creation_counter < other.creation_counter
 
 
@@ -127,6 +153,9 @@ class Record(SelfEncodable):
             if getattr(self, member) != getattr(other, member):
                 return False
         return True
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
 
 class ChoiceBase(type, Coder):

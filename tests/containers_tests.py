@@ -3,10 +3,37 @@ from unittest import TestCase
 
 from containers import RecordBase, Record, Member, BitMaskedIntegerMeta, \
     BitMaskedInteger
-from dummy import Header, Packet, Command, General, GetStatus, Flags
+from dummy import Header, Command, General, GetStatus, Flags
 
 
-class SimpleRecordTest(TestCase):
+class MemberTest(TestCase):
+    def test_order(self):
+        m1 = Member(Header)
+        m2 = Member(Header)
+        self.assertLess(m1, m2)
+        self.assertNotEqual(m1, m2)
+
+        m1 = Member(Header)
+        m2 = Member(Header, order=9)
+        self.assertGreater(m1, m2)
+        self.assertLess(m2, m1)
+        self.assertNotEqual(m1, m2)
+
+        self.assertRaises(ValueError, m1.__lt__, "hello")
+
+    def test_equality(self):
+        m1 = Member(Header, order=1)
+        m2 = Member(Header, order=1)
+        self.assertEqual(m1, m2)
+
+        m1 = Member(Header, order=1)
+        m2 = Member(Flags, order=1)
+        self.assertNotEqual(m1, m2)
+
+        self.assertNotEqual(m1, "hello")
+
+
+class RecordTest(TestCase):
     """
     Test simple record with primitive values.
     """
@@ -28,14 +55,19 @@ class SimpleRecordTest(TestCase):
 
     def test_creation(self):
         # Test default values
-        h = Header()
-        for name, coder in h.members.iteritems():
-            self.assertEqual(coder.default_value(), getattr(h, name))
+        self.verify_default_members(Header())
         # Test user-defined values
         for values in (case[0] for case in self.cases):
             h = Header(**values)
             for name, value in values.iteritems():
                 self.assertEqual(getattr(h, name), value)
+
+    def verify_default_members(self, record):
+        for name, coder in record.members.iteritems():
+            self.assertEqual(coder.default_value(), getattr(record, name))
+
+    def test_default_value(self):
+        self.verify_default_members(Header.default_value())
 
     def test_invalid_member(self):
         """
@@ -55,6 +87,17 @@ class SimpleRecordTest(TestCase):
             h, _ = Header.decode(expected)
             for name, value in values.iteritems():
                 self.assertEqual(value, getattr(h, name))
+
+    def test_equality(self):
+        h1 = Header(barker=0xcafe, size=1234, inverted_size=~1234)
+        h2 = Header(barker=0xcafe, size=1234, inverted_size=~1234)
+        self.assertIsNot(h1, h2)
+        self.assertEqual(h1, h2)
+
+        h1.inverted_size = 0
+        self.assertNotEqual(h1, h2)
+
+        self.assertNotEqual(h1, 12)
 
 
 class ChoiceTest(TestCase):
@@ -105,6 +148,7 @@ class BitMaskedIntegerTest(TestCase):
         f = Flags(**self.example_values)
         for name, value in self.example_values.iteritems():
             self.assertEqual(value, getattr(f, name))
+        print f
 
     def test_equation(self):
         f1 = Flags(**self.example_values)
@@ -133,7 +177,7 @@ class BitMaskedIntegerTest(TestCase):
     def test_encoding(self):
         binary = "\x9d"
         f = Flags(**self.example_values)
-        encoded = f.encode()
+        encoded = Flags.encode(f)
         self.assertEqual(encoded, binary)
         f2, _ = Flags.decode(binary)
         self.assertEqual(f, f2)

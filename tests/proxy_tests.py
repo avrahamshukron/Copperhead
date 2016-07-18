@@ -9,11 +9,8 @@ class Foo(object):
         self.foo = "hello"
         self.bar = "world"
 
-    def __str__(self):
-        return "str"
-
-    def __repr__(self):
-        return "repr"
+    def __int__(self):
+        return 1
 
 
 class FooProxy(Proxy):
@@ -28,7 +25,7 @@ class FooProxy(Proxy):
 
 class ProxyTest(TestCase):
 
-    def test_attributes(self):
+    def test_attribute_proxying(self):
         f = Foo()
         p = FooProxy(f)
 
@@ -50,6 +47,18 @@ class ProxyTest(TestCase):
 
     def test_special_funcs(self):
         v = 6
-        p = FooProxy(v)
+        p = Proxy(v)
         self.assertEqual(str(v), str(p))
         self.assertEqual(repr(v), repr(p))
+
+        v = Foo()
+        p = FooProxy(v)
+        self.assertEqual(int(v), int(p))
+
+        l = [1, ]
+        p = Proxy(l)
+        self.assertEqual(bool(p), bool(l))
+        self.assertEqual(len(p), len(l))
+        self.assertEqual(p[0], l[0])
+
+

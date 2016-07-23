@@ -1,13 +1,12 @@
 import struct
 
+import enum34
 from coders import Coder
 
 
-class ByteOrder(object):
-    _LITTLE = "little"  # Deprecated. Use LSB_FIRST
-    _BIG = "big"  # Deprecated. Use MSB_FIRST
-    MSB_FIRST = _BIG
-    LSB_FIRST = _LITTLE
+class ByteOrder(str, enum34.Enum):
+    MSB_FIRST = "big"
+    LSB_FIRST = "little"
 
 
 class UnsignedInteger(Coder):
@@ -167,45 +166,6 @@ class Boolean(UnsignedInteger):
         return False if as_bytes == "\x00" else True
 
 
-class Holder(object):
-    def __init__(self, **kwargs):
-        self.values = set(kwargs.values())
-        for name, value in kwargs.iteritems():
-            setattr(self, name, value)
-
-
-class Enum(UnsignedInteger):
-    """
-    A Coder for a closed, named set of Unsigned Integers.
-    """
-
-    DEFAULT_WIDTH = 1
-
-    def __init__(self, members, width=DEFAULT_WIDTH, **kwargs):
-        """
-        Creates a new enum from a given dict of values.
-
-        :param members: A dict mapping `name -> value`
-        :type members: dict
-        """
-        default = kwargs.pop("default", None)
-        if default is None:
-            if len(members) > 0:
-                # The default will be the lowest value in the enum's members
-                default = sorted(members.keys())[0]
-        elif default not in members.values:
-            raise ValueError("Default value %s is not one of %s" %
-                             (default, members,))
-
-        super(Enum, self).__init__(width=width, default=default, **kwargs)
-        self.members = Holder(**members)
-
-    def validate(self, value):
-        if value in self.members.values:
-            return True
-        raise ValueError("%s not a member of %s", (value, self.members))
-
-
 class Sequence(Coder):
     """
     A Sequence is a series of elements of the same type.
@@ -337,4 +297,4 @@ class String(Sequence):
 
 
 __all__ = (UnsignedInteger.__name__, SignedInteger.__name__, Boolean.__name__,
-           Enum.__name__, Sequence.__name__, String.__name__)
+           Sequence.__name__, String.__name__)

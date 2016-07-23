@@ -1,10 +1,9 @@
 import array
-import struct
 from cStringIO import StringIO
 from unittest import TestCase
 
 from protopy.coders import Coder
-from protopy.primitives import UnsignedInteger, SignedInteger, Boolean, Enum, \
+from protopy.primitives import UnsignedInteger, SignedInteger, Boolean, \
     Sequence, String
 
 
@@ -133,54 +132,6 @@ class BooleanFieldTests(TestCase):
             # Check that the expected_value is correct
             self.assertEqual(
                 decoded_value, expected_value, msg="Incorrect decoded value")
-
-
-class EnumFieldTests(TestCase):
-    VALUES = {
-        "One": 1, "Two": 2, "Four": 4, "Eight": 8, "Sixteen": 16,
-    }
-    numeric_values = VALUES.values()
-    struct = struct.Struct("B")
-
-    def test_creation(self):
-        e = Enum(members=self.VALUES)
-        self.assertEqual(e.width, 1, msg="Incorrect default width")
-
-    def test_encode(self):
-        e = Enum(members=self.VALUES)
-        for value in self.numeric_values:
-            out_buf = StringIO()
-            e.write_to(value, out_buf)
-            self.assertEqual(out_buf.getvalue(), self.struct.pack(value),
-                             msg="Incorrect encoded value")
-            out_buf.close()
-
-        not_members = set(range(1, 20)) - set(self.numeric_values)
-        for value in not_members:
-            out_buf = StringIO()
-            self.assertRaises(ValueError, e.write_to, value, out_buf)
-
-    def test_decode(self):
-        e = Enum(members=self.VALUES)
-
-        for encoded, value in (
-                (self.struct.pack(v), v)
-                for v in self.numeric_values):
-            in_buf = StringIO(encoded)
-            decoded_value = e.read_from(in_buf)
-            self.assertEqual(
-                decoded_value, value, msg="Incorrect decoded value")
-
-        not_members = set(range(1, 20)) - set(self.numeric_values)
-        for encoded in (self.struct.pack(v) for v in not_members):
-            in_buf = StringIO(encoded)
-            self.assertRaises(ValueError, e.read_from, in_buf)
-
-    def test_enum_api(self):
-        e = Enum(self.VALUES)
-        for name in self.VALUES.keys():
-            self.assertTrue(hasattr(e.members, name))
-            self.assertEqual(self.VALUES[name], getattr(e.members, name))
 
 
 class SequenceTest(TestCase):

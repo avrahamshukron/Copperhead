@@ -1,13 +1,59 @@
-from collections import OrderedDict
-
+import operator
 import sys
+from collections import OrderedDict
 from functools import total_ordering
 
-import operator
-
 from coders import Coder, SelfEncodable
-from primitives import Enum, UnsignedInteger
+from primitives import UnsignedInteger, ByteOrder
+import enum34
 from proxy import Proxy
+
+
+class EnumerationMeta(enum34.EnumMeta, Coder):
+    """
+    Metaclass for Coder-compliant Enums
+    """
+
+    DEFAULT_WIDTH = 1
+    DEFAULT_BYTE_ORDER = ByteOrder.MSB_FIRST
+
+    def __new__(mcs, name, bases, classdict):
+        width = classdict.pop("__width__", mcs.DEFAULT_WIDTH)
+        byte_oder = classdict.pop("__byte_order__", mcs.DEFAULT_BYTE_ORDER)
+        coder = UnsignedInteger(width=width, byte_order=byte_oder)
+        classdict["__coder__"] = coder
+        return super(EnumerationMeta, mcs).__new__(mcs, name, bases, classdict)
+
+    def default_value(self):
+        """
+        :return: The first ordinal member in the enum.
+        """
+        if len(self.__members__) == 0:
+            raise ValueError("%s class does not have any members" %
+                             (self.__name__,))
+
+        _, value = self.__members__.items()[0]
+        return value
+
+    def write_to(self, value, stream):
+        self.__coder__.write_to(self(value), stream)
+
+    def read_from(self, stream):
+        value = self.__coder__.read_from(stream)
+        return self(value)
+
+
+class Enumeration(int, SelfEncodable, enum34.Enum):
+    """
+    Superclass for enumeration types.
+    Based on the Enum class from the enum34 package, back-porting Enum from
+    Python 3.4
+    """
+    __metaclass__ = EnumerationMeta
+    __coder__ = None  # Set by the metaclass
+
+    def write_to(self, stream):
+        return self.__coder__.write_to(self, stream)
 
 
 class RecordBase(type, Coder):
@@ -177,7 +223,7 @@ class ChoiceBase(type, Coder):
     """
 
     def default_value(self):
-        return self(tag=self.tag_field.default_value())  # Just an empty Choice
+        return self(tag=self.tag_enum.default_value())  # Just an empty Choice
 
     def __new__(mcs, name, bases, attrs):
         """
@@ -207,10 +253,11 @@ class ChoiceBase(type, Coder):
                 "the number of variants below %s, or declare a higher "
                 "`tag_width`" % (num_variants, tag_width, max_possible))
 
-        # Create the `tag_field` enum field for this class.
-        enum = {cls.__name__: tag for tag, cls in variants.iteritems()}
-        tag_field = Enum(members=enum, width=tag_width)
-        attrs["tag_field"] = tag_field
+        # Create the tags enum for this class.
+        values = {cls.__name__: tag for tag, cls in variants.iteritems()}
+        variants_enum = EnumerationMeta(
+            "%sTag" % (name,), (Enumeration,), values)
+        attrs["tag_enum"] = variants_enum
 
         # Create the class here, because we need it for the next steps
         choice_class = super(ChoiceBase, mcs).__new__(mcs, name, bases, attrs)
@@ -235,7 +282,7 @@ class ChoiceBase(type, Coder):
         return value.write_to(stream)
 
     def read_from(self, stream):
-        tag = self.tag_field.read_from(stream)
+        tag = self.tag_enum.read_from(stream)
         variant_cls = self.variants.get(tag)
         return self(tag=tag, value=variant_cls.read_from(stream))
 
@@ -249,7 +296,7 @@ class Choice(SelfEncodable):
 
     # These attributes will be overridden by the metaclass, but we declare them
     # here just to publicly declare their existence.
-    tag_field = None
+    tag_enum = None
     variants = {}
     reverse_variants = {}
 
@@ -257,18 +304,17 @@ class Choice(SelfEncodable):
         """
         Initialize a new Choice instance.
 
-        :param tag: The tag of this instance. Must be one of
-            Class.tag_field.members
+        :param tag: The id of this instance. An instance of Class.tag_enum
         :param value: Optional. A value corresponding to `tag`.
         """
-        self.tag = tag
+        self.tag = self.tag_enum(tag)
         self.value = value
         if self.value is None:
             variant_coder = self.variants.get(self.tag)
             self.value = variant_coder.default_value()
 
     def write_to(self, stream):
-        written = self.tag_field.write_to(self.tag, stream)
+        written = self.tag_enum.write_to(self.tag_enum(self.tag), stream)
         variant_cls = self.variants.get(self.tag)
         written += variant_cls.write_to(self.value, stream)
         return written
@@ -426,5 +472,4 @@ class BitMaskedInteger(SelfEncodable):
             masks={name: getattr(self, name) for name in self.masks.iterkeys()}
         )
 
-
-__all__ = (Record.__name__, Choice.__name__)
+__all__ = (Record.__name__, Choice.__name__, Enumeration.__name__)

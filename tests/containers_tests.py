@@ -1,9 +1,47 @@
+import struct
 from cStringIO import StringIO
 from unittest import TestCase
 
 from protopy.containers import RecordBase, Record, Member, \
-    BitMaskedIntegerMeta, BitMaskedInteger
+    BitMaskedIntegerMeta, BitMaskedInteger, Enumeration
 from dummy import Header, Command, General, GetStatus, Flags
+
+
+class EnumerationTests(TestCase):
+    class DaysOfWeek(Enumeration):
+        Sunday = 1
+        Monday = 2
+        Tuesday = 3
+        Wednesday = 4
+        Thursday = 5
+        Friday = 6
+        Saturday = 7
+
+    numeric_values = DaysOfWeek.__members__.values()
+    struct = struct.Struct("B")
+
+    def test_encode(self):
+        for day in self.DaysOfWeek:
+            self.assertEqual(day.encode(), self.struct.pack(day),
+                             msg="Incorrect encoded value")
+
+        not_members = set(range(1, 20)) - set(self.numeric_values)
+        for day in not_members:
+            self.assertRaises(TypeError, self.DaysOfWeek.encode, day)
+
+    def test_decode(self):
+        for encoded, value in (
+                (self.struct.pack(v), v)
+                for v in self.DaysOfWeek):
+            in_buf = StringIO(encoded)
+            decoded_value = self.DaysOfWeek.read_from(in_buf)
+            self.assertEqual(
+                decoded_value, value, msg="Incorrect decoded value")
+
+        not_members = set(range(1, 20)) - set(self.numeric_values)
+        for encoded in (self.struct.pack(v) for v in not_members):
+            in_buf = StringIO(encoded)
+            self.assertRaises(ValueError, self.DaysOfWeek.read_from, in_buf)
 
 
 class MemberTest(TestCase):

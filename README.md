@@ -10,7 +10,9 @@ The main design goals of this framework are:
 passed "On the wire" - that is - sent over the network, saved to disk etc.
 
 ## Core Concepts
+
 ### Coders:
+
 The most basic entities in the framework are **coders**.
 
 Coders are objects that are capable of serializing a certain type of values.
@@ -18,6 +20,7 @@ The `Coder` class defines the coder interface, and is actually an aggregate of
 both `Encoder` and `Decoder` classes.
 
 #### Encoder
+
 The Encoder interface define the following methods:
 
     def write_to(self, value, stream) -> bytes_written
@@ -30,6 +33,7 @@ It returns the number of bytes written.
 The `encode` method serializes a value and returns the result as a string.
 
 #### Decoder
+
 The Decoder interface define the following methods:
 
     def read_from(self, stream) -> value
@@ -41,12 +45,14 @@ decoded value.
 
 The `decode` method decodes a value from a buffer, and returns the
 decoded value and the remaining buffer.
+
 ---
 ### Primitives
 Primitive types are classes that **inherits** from Coder.
 This means that an **instance** of a primitive type **is a** Coder.
 They called Primitive types because they generally deals with built-in types in
 python, that have literals in the language. Such types include `int`, `bool`
+
 ---
 ### Containers
 Container types are classes that **implements** the Coder interface.

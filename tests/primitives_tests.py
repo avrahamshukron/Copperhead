@@ -195,20 +195,24 @@ class SequenceTest(TestCase):
 
 
 class StringTest(TestCase):
-    without_length = String(max_length=1024, include_length=False)
-    with_length = String(max_length=1024, include_length=True)
+    unlimited = String()
+    limited = String(max_length=100)
 
     def test_default_value(self):
-        self.assertEqual(self.with_length.default_value(), "")
+        self.assertEqual(self.limited.default_value(), "")
 
-    def test_encoding_with_length(self):
+    def test_encoding(self):
         s = "Hello World"
-        expected = self.with_length.length_coder.encode(len(s)) + s
-        self.compare_encoding(expected, s, self.with_length)
+        expected = s + String.NULL
+        self.compare_encoding(expected, s, self.limited)
 
-    def test_encoding_without_length(self):
-        s = "Hello World"
-        self.compare_encoding(s, s, self.without_length)
+        # Non-ascii string
+        s = "Hello \xff World"
+        self.assertRaises(ValueError, self.limited.encode, s)
+
+        # Out-of-bounds
+        s = "a" * (self.limited.max_length + 1)
+        self.assertRaises(ValueError, self.limited.encode, s)
 
     def compare_encoding(self, expected, original, coder):
         self.assertEqual(expected, coder.encode(original))
@@ -219,15 +223,19 @@ class StringTest(TestCase):
 
     def test_decoding_with_length(self):
         s = "Hello World"
-        encoded = self.with_length.length_coder.encode(len(s)) + s
-        self.compare_decoding(encoded, s, self.with_length)
+        encoded = s + String.NULL
+        self.compare_decoding(encoded, s, self.limited)
+
+        # Non-ascii string
+        s = "Hello \xff World" + String.NULL
+        self.assertRaises(ValueError, self.limited.decode, s)
+
+        # Out-of-bounds
+        s = "a" * (self.limited.max_length + 1) + String.NULL
+        self.assertRaises(ValueError, self.limited.decode, s)
 
     def compare_decoding(self, expected, original, coder):
         decoded, _ = coder.decode(expected)
         self.assertEqual(decoded, original)
         stream = StringIO(expected)
         self.assertEqual(coder.read_from(stream), original)
-
-    def test_decoding_without_length(self):
-        s = "Hello World"
-        self.compare_decoding(s, s, self.without_length)

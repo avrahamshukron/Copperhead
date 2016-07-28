@@ -1,4 +1,5 @@
 import struct
+from cStringIO import StringIO
 
 import enum34
 from coders import Coder
@@ -293,25 +294,87 @@ class Array(Sequence):
             include_length=False, length_width=None)
 
 
-class String(Sequence):
+class String(Coder):
     """
-    This class is a special version of Sequence, designed for Python strings.
+    Null-terminated character sequence, optionally limited in length.
     """
 
-    def __init__(self, **kwargs):
-        coder = kwargs.pop("element_coder", None)
-        super(String, self).__init__(element_coder=coder, **kwargs)
+    NULL = "\x00"
 
-    def _write_elements(self, stream, value):
-        stream.write(value)
-        return len(value)
+    def __init__(self, max_length=None):
+        """
+        Initialize new String coder.
 
-    def _read_elements(self, count, stream):
-        return stream.read(count)
+        :param max_length: Upper limit for the length of the string.
+        """
+        self.max_length = max_length
 
     def default_value(self):
         return ""
 
+    def write_to(self, value, stream):
+        ascii = self.asciify(value)
+
+        length = len(ascii)
+        if self.max_length is not None and length > self.max_length:
+            raise ValueError(
+                "String length (%s) is larger than the specified limit (%s)" %
+                (length, self.max_length))
+
+        written = length
+        stream.write(ascii)
+        # Append NULL terminator if needed
+        if not ascii.endswith(self.NULL):
+            stream.write(self.NULL)
+            written += len(self.NULL)
+        return written
+
+    def read_from(self, stream):
+        buf = StringIO()
+        read = 0
+        while True:
+            if self.max_length is not None and read > self.max_length:
+                raise ValueError(
+                    "Reached maximum length of string (%s) without "
+                    "encountering a NULL terminator" % (self.max_length,))
+
+            c = stream.read(1)
+            read += 1
+            if c == self.NULL:
+                # Don't include the NULL terminator in the result.
+                break
+            buf.write(c)
+        return self.unasciify(buf.getvalue())
+
+    @staticmethod
+    def asciify(string):
+        """
+        Convert a Python string to ascii string.
+
+        :param string: A Python string.
+        :return: The ascii encoded version of `string`, if possible.
+        :raises ValueError: If `string` cannot be encoded as ascii
+        """
+        try:
+            return string.encode("ascii")
+        except UnicodeDecodeError as e:
+            raise ValueError(str(e))
+
+    @staticmethod
+    def unasciify(string):
+        """
+        Convert an ascii-encoded string into Python string.
+
+        :param string: An ascii-encoded string.
+        :return: The unicode version of `string`, if possible.
+        :raises ValueError: If `string` cannot be decoded as ascii
+        """
+        try:
+            return string.decode("ascii")
+        except UnicodeDecodeError as e:
+            raise ValueError(str(e))
+
 
 __all__ = (UnsignedInteger.__name__, SignedInteger.__name__, Boolean.__name__,
            Sequence.__name__, String.__name__, ByteOrder.__name__,
+           Char.__name__)

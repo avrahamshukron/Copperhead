@@ -4,7 +4,7 @@ from unittest import TestCase
 
 from protopy.coders import Coder
 from protopy.primitives import UnsignedInteger, SignedInteger, Boolean, \
-    Sequence, String
+    Sequence, String, Char
 
 
 class CoderTests(TestCase):
@@ -44,6 +44,10 @@ class UnsignedIntegerFieldTests(TestCase):
                     f.read_from(StringIO("\xff" * width)),
                     2 ** (8 * width) - 1
                 )
+
+    def test_decoding_not_enough_data(self):
+        uint = UnsignedInteger(width=4)
+        self.assertRaises(ValueError, uint.decode, "\xff")
 
     def test_user_bounds(self):
         max_value = 123456
@@ -194,6 +198,23 @@ class SequenceTest(TestCase):
             self.assertEqual(items, expected)
 
 
+class CharTest(TestCase):
+
+    def test_default_value(self):
+        self.assertEqual("\0", Char.default_value())
+
+    def test_coding(self):
+        for i in xrange(256):
+            c = chr(i)
+            self.assertEqual(Char.encode(c), c)
+            decoded, _ = Char.decode(c)
+            self.assertEqual(decoded, c)
+
+    def test_invalid_length(self):
+        self.assertRaises(ValueError, Char.encode, "asdfd")
+        self.assertRaises(ValueError, Char.decode, "")
+
+
 class StringTest(TestCase):
     unlimited = String()
     limited = String(max_length=100)
@@ -202,16 +223,16 @@ class StringTest(TestCase):
         self.assertEqual(self.limited.default_value(), "")
 
     def test_encoding(self):
-        s = "Hello World"
-        expected = s + String.NULL
+        s = "a" * (self.limited.max_length - 1)
+        expected = s + Char.NULL
         self.compare_encoding(expected, s, self.limited)
 
         # Non-ascii string
         s = "Hello \xff World"
         self.assertRaises(ValueError, self.limited.encode, s)
 
-        # Out-of-bounds
-        s = "a" * (self.limited.max_length + 1)
+        # Out-of-bounds by the null terminator
+        s = "a" * self.limited.max_length
         self.assertRaises(ValueError, self.limited.encode, s)
 
     def compare_encoding(self, expected, original, coder):
@@ -222,16 +243,16 @@ class StringTest(TestCase):
         self.assertEqual(stream.getvalue(), expected)
 
     def test_decoding_with_length(self):
-        s = "Hello World"
-        encoded = s + String.NULL
+        s = "a" * (self.limited.max_length - 1)
+        encoded = s + Char.NULL
         self.compare_decoding(encoded, s, self.limited)
 
         # Non-ascii string
-        s = "Hello \xff World" + String.NULL
+        s = "Hello \xff World" + Char.NULL
         self.assertRaises(ValueError, self.limited.decode, s)
 
         # Out-of-bounds
-        s = "a" * (self.limited.max_length + 1) + String.NULL
+        s = "a" * self.limited.max_length + Char.NULL
         self.assertRaises(ValueError, self.limited.decode, s)
 
     def compare_decoding(self, expected, original, coder):

@@ -168,20 +168,28 @@ class Boolean(UnsignedInteger):
 
 
 class Char(Coder):
-    @classmethod
-    def write_to(cls, value, stream):
+    """
+    Simple coder for a single character.
+    """
+    NULL = "\x00"
+
+    def write_to(self, value, stream):
         if len(value) != 1:
             raise ValueError("\"%s\" is not a single character")
 
         stream.write(value)
 
-    @classmethod
-    def read_from(cls, stream):
-        return stream.read(1)
+    def read_from(self, stream):
+        c = stream.read(1)
+        if len(c) == 0:
+            raise ValueError("Reached end of data while expecting a character")
+        return c
 
-    @classmethod
-    def default_value(cls):
-        return "\x00"
+    def default_value(self):
+        return self.NULL
+
+# Make a single instance of Char as a shared singleton.
+Char = Char()
 
 
 class Sequence(Coder):
@@ -299,48 +307,47 @@ class String(Coder):
     Null-terminated character sequence, optionally limited in length.
     """
 
-    NULL = "\x00"
-
     def __init__(self, max_length=None):
         """
         Initialize new String coder.
 
-        :param max_length: Upper limit for the length of the string.
+        :param max_length: Upper limit for the length of the string. The NULL
+            terminator is taken into this limit, so if the limit is 256 for
+            example, the actual string must be at most 255 in length.
         """
-        self.max_length = max_length
+        self.max_length = max_length if max_length >= 0 else None
 
     def default_value(self):
         return ""
 
     def write_to(self, value, stream):
         ascii = self.asciify(value)
+        if Char.NULL in ascii:
+            raise ValueError("NULL (\\0) character cannot appear in the string")
 
-        length = len(ascii)
-        if self.max_length is not None and length > self.max_length:
+        total_length = len(ascii) + 1  # + 1 for null terminator.
+        if self.max_length is not None and total_length > self.max_length:
             raise ValueError(
-                "String length (%s) is larger than the specified limit (%s)" %
-                (length, self.max_length))
+                "String length (%s) is larger than the specified limit (%s). "
+                "Be aware that the NULL terminator is also counted towards the"
+                " limit" % (total_length, self.max_length))
 
-        written = length
         stream.write(ascii)
-        # Append NULL terminator if needed
-        if not ascii.endswith(self.NULL):
-            stream.write(self.NULL)
-            written += len(self.NULL)
-        return written
+        stream.write(Char.NULL)
+        return total_length
 
     def read_from(self, stream):
         buf = StringIO()
         read = 0
         while True:
-            if self.max_length is not None and read > self.max_length:
+            if self.max_length is not None and read >= self.max_length:
                 raise ValueError(
                     "Reached maximum length of string (%s) without "
                     "encountering a NULL terminator" % (self.max_length,))
 
             c = stream.read(1)
             read += 1
-            if c == self.NULL:
+            if c == Char.NULL:
                 # Don't include the NULL terminator in the result.
                 break
             buf.write(c)
@@ -377,4 +384,4 @@ class String(Coder):
 
 __all__ = (UnsignedInteger.__name__, SignedInteger.__name__, Boolean.__name__,
            Sequence.__name__, String.__name__, ByteOrder.__name__,
-           Char.__name__)
+           Char.__class__.__name__)

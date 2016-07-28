@@ -166,6 +166,23 @@ class Boolean(UnsignedInteger):
         return False if as_bytes == "\x00" else True
 
 
+class Char(Coder):
+    @classmethod
+    def write_to(cls, value, stream):
+        if len(value) != 1:
+            raise ValueError("\"%s\" is not a single character")
+
+        stream.write(value)
+
+    @classmethod
+    def read_from(cls, stream):
+        return stream.read(1)
+
+    @classmethod
+    def default_value(cls):
+        return "\x00"
+
+
 class Sequence(Coder):
     """
     A Sequence is a series of elements of the same type.
@@ -297,4 +314,4 @@ class String(Sequence):
 
 
 __all__ = (UnsignedInteger.__name__, SignedInteger.__name__, Boolean.__name__,
-           Sequence.__name__, String.__name__)
+           Sequence.__name__, String.__name__, ByteOrder.__name__,

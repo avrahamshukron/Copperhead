@@ -93,9 +93,16 @@ class UnsignedInteger(Coder):
             return self.struct.pack(value)
 
     def decode(self, buf):
-        value = self._decode_func(buf[:self.width])
+        mine = buf[:self.width]
+        remainder = buf[self.width:]
+        if len(mine) != self.width:
+            raise ValueError(
+                "Premature end of data. Expected %s bytes, got only %s" %
+                (self.width, len(mine)))
+
+        value = self._decode_func(mine)
         if self.validate(value):
-            remainder = buf[self.width:]
+
             return value, remainder
 
     def read_from(self, stream):

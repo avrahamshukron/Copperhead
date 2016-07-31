@@ -174,6 +174,14 @@ class Boolean(UnsignedInteger):
         return False if as_bytes == "\x00" else True
 
 
+def singleton(cls):
+    """
+    Transform a class into a single instance of that class. like None.
+    """
+    return cls()
+
+
+@singleton
 class Char(Coder):
     """
     Simple coder for a single character.
@@ -194,9 +202,6 @@ class Char(Coder):
 
     def default_value(self):
         return self.NULL
-
-# Make a single instance of Char as a shared singleton.
-Char = Char()
 
 
 class Sequence(Coder):

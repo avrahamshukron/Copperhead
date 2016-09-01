@@ -405,7 +405,7 @@ class BitMask(object):
         return (instance._value & self.mask) >> self.shift
 
     def __set__(self, instance, value):
-        instance._value |= (self.mask & (value << self.shift))
+        instance._value |= (self.mask & (int(value) << self.shift))
 
 
 class BitMaskedIntegerMeta(type, Coder):

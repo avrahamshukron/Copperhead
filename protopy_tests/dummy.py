@@ -19,12 +19,17 @@ class General(Choice):
 
 
 class Command(Choice):
+    tag_width = 2
+
     class Upgrade(Record):
-        path = String(max_length=1024)
+        path = Member(String(max_length=1024))
+
+    class Dummy(Record):
+        counter_size = Member(UnsignedInteger(width=4))
 
     variants = {
-        0x54: General,
         0x01: Upgrade,
+        0x12: Dummy
     }
 
 

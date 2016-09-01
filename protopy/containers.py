@@ -474,4 +474,5 @@ class BitMaskedInteger(SelfEncodable):
             masks={name: getattr(self, name) for name in self.masks.iterkeys()}
         )
 
-__all__ = (Record.__name__, Choice.__name__, Enumeration.__name__)
+__all__ = (Record.__name__, Member.__name__, BitMask.__name__,
+           BitMaskedInteger.__name__, Choice.__name__, Enumeration.__name__)

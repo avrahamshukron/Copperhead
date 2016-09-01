@@ -254,9 +254,10 @@ class ChoiceBase(type, Coder):
                 "`tag_width`" % (num_variants, tag_width, max_possible))
 
         # Create the tags enum for this class.
-        values = {cls.__name__: tag for tag, cls in variants.iteritems()}
+        class_dict = {cls.__name__: tag for tag, cls in variants.iteritems()}
+        class_dict["__width__"] = tag_width
         variants_enum = EnumerationMeta(
-            "%sTag" % (name,), (Enumeration,), values)
+            "%sTag" % (name,), (Enumeration,), class_dict)
         attrs["tag_enum"] = variants_enum
 
         # Create the class here, because we need it for the next steps
@@ -297,6 +298,7 @@ class Choice(SelfEncodable):
     # These attributes will be overridden by the metaclass, but we declare them
     # here just to publicly declare their existence.
     tag_enum = None
+    tag_width = 1
     variants = {}
     reverse_variants = {}
 

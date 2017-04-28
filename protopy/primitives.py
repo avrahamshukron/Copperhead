@@ -1,6 +1,8 @@
 import struct
 from cStringIO import StringIO
 
+import binascii
+
 import enum34
 from coders import Coder
 
@@ -87,6 +89,10 @@ class UnsignedInteger(Coder):
         encoded = self.encode(value)
         stream.write(encoded)
         return len(encoded)
+
+    def _encode_using_binascii(self, value):
+        hexlified = hex(value)[2:]  # Remove 0x prefix.
+        return binascii.unhexlify(hexlified)
 
     def encode(self, value):
         if self.validate(value):
